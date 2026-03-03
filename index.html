@@ -14,7 +14,7 @@
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 body{background:var(--bg);color:var(--text);font-family:'Noto Sans JP',sans-serif;min-height:100vh;overflow-x:hidden;}
-header{background:rgba(7,9,15,.97);border-bottom:1px solid var(--border);padding:0 1.5rem;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:400;backdrop-filter:blur(20px);}
+header{background:linear-gradient(135deg,#080808 0%,#160e00 50%,#080808 100%);border-bottom:2px solid #7a5c0f;padding:0 1rem;height:54px;display:flex;align-items:center;justify-content:space-between;position:sticky;top:0;z-index:400;backdrop-filter:blur(20px);box-shadow:0 2px 20px rgba(0,0,0,.9),0 1px 0 rgba(240,180,50,.12);}
 .logo{font-family:'Bebas Neue',sans-serif;font-size:1.5rem;letter-spacing:4px;color:var(--accent);}
 .live-dot{width:8px;height:8px;border-radius:50%;background:var(--red);animation:blink 1s infinite;display:inline-block;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.15}}
@@ -227,7 +227,6 @@ nav::-webkit-scrollbar{display:none;}
 .bench-chip.pitcher{border-color:rgba(77,166,255,.5);color:var(--blue);}
 .bench-chip.in-lineup{opacity:.35;pointer-events:none;text-decoration:line-through;}
 .pitcher-slot-filled{display:flex;align-items:center;gap:.5rem;padding:.3rem .5rem;background:rgba(77,166,255,.1);border-radius:6px;}
-</style>
 .pc-dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:2px;vertical-align:middle;}
 .strike-zone-wrap{display:flex;gap:1rem;flex-wrap:wrap;align-items:flex-start;justify-content:center;}
 .zone-grid{display:grid;grid-template-columns:repeat(5,1fr);grid-template-rows:repeat(5,1fr);gap:2px;width:200px;height:200px;flex-shrink:0;}
@@ -254,9 +253,16 @@ nav::-webkit-scrollbar{display:none;}
 .pc-type-btn.active{border-color:var(--accent);color:var(--accent);background:rgba(240,201,58,.1);}
 </style>
 </head>
-<body>
-<header>
-  <div class="logo">⚾ PRO MANAGER</div>
+<body style="visibility:hidden">
+<header style="height:62px;padding:0 1rem">
+  <div style="display:flex;align-items:center;gap:.5rem">
+    <img src="https://hato-ux.github.io/BaseBall-analying-/logo.png"
+      style="height:54px;width:auto;object-fit:contain;filter:drop-shadow(0 0 8px rgba(220,130,0,.7)) drop-shadow(0 2px 4px rgba(0,0,0,.9));flex-shrink:0;margin-top:2px">
+    <div style="display:flex;flex-direction:column;line-height:1.15;margin-left:.1rem">
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:.5rem;letter-spacing:4px;color:#7a5c0f">BASEBALL ANALYTICS</span>
+      <span style="font-family:'Bebas Neue',sans-serif;font-size:1rem;letter-spacing:3px;background:linear-gradient(135deg,#f0c93a 0%,#c8820a 50%,#f0c93a 100%);-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-clip:text">PRO MANAGER</span>
+    </div>
+  </div>
   <div class="live-badge" id="live-badge"><span class="live-dot"></span>LIVE</div>
 </header>
 <nav>
@@ -483,8 +489,74 @@ nav::-webkit-scrollbar{display:none;}
     <!-- グリッド＋打席履歴 -->
     <div style="font-size:.6rem;color:var(--muted);letter-spacing:2px;margin-bottom:.35rem">PITCH LOCATION — タップして投球を記録</div>
     <div style="display:flex;gap:.8rem;align-items:flex-start;justify-content:center;flex-wrap:wrap">
-      <!-- 5x5グリッド -->
-      <div id="inline-zone-grid" style="display:grid;grid-template-columns:repeat(5,1fr);gap:3px;width:220px;height:220px;flex-shrink:0"></div>
+      <!-- 5x5グリッド（キャッチャー目線） -->
+      <div style="position:relative;width:220px;height:220px;flex-shrink:0">
+        <!-- 背景SVG：ピッチャーシルエット＋ホームベース（キャッチャー目線） -->
+        <svg viewBox="0 0 220 220" xmlns="http://www.w3.org/2000/svg"
+          style="position:absolute;inset:0;width:100%;height:100%;pointer-events:none;z-index:0">
+          <defs>
+            <radialGradient id="moundGrad" cx="50%" cy="100%" r="60%">
+              <stop offset="0%" stop-color="rgba(255,255,255,0.06)"/>
+              <stop offset="100%" stop-color="rgba(255,255,255,0)"/>
+            </radialGradient>
+          </defs>
+
+          <!-- マウンド光 -->
+          <ellipse cx="110" cy="82" rx="38" ry="10" fill="url(#moundGrad)"/>
+
+          <!-- ホームベース（下部・ペンタゴン） -->
+          <g opacity="0.22">
+            <polygon points="110,213 85,200 85,183 135,183 135,200" fill="white"/>
+          </g>
+
+          <!-- ピッチャーシルエット（左投げ・Skubal風・リリース直前） -->
+          <g opacity="0.12" transform="translate(108,68) scale(0.88)">
+            <!-- 軸足（左足・マウンド接地） -->
+            <path d="M8,52 Q12,62 18,66 Q14,70 8,68 Q2,64 2,52 Z" fill="white"/>
+            <ellipse cx="15" cy="67" rx="7" ry="3" fill="white" transform="rotate(15,15,67)"/>
+
+            <!-- 踏み出し右脚（大きく前方へ・膝曲がり） -->
+            <path d="M2,44 Q-8,50 -18,58 Q-22,72 -20,78 Q-16,80 -14,76 Q-14,66 -6,56 Q4,50 8,44 Z" fill="white"/>
+            <ellipse cx="-17" cy="78" rx="7" ry="3" fill="white" transform="rotate(-20,-17,78)"/>
+
+            <!-- 腰・骨盤（前傾・回転） -->
+            <path d="M-4,34 Q-8,44 2,50 Q8,50 14,44 Q10,34 4,32 Z" fill="white"/>
+
+            <!-- 上体（大きく前傾・捻り） -->
+            <path d="M0,10 Q-6,22 -2,34 Q2,36 8,34 Q14,22 10,10 Z" fill="white"/>
+
+            <!-- 頭（帽子・前傾） -->
+            <circle cx="5" cy="2" r="9" fill="white"/>
+            <!-- 帽子 -->
+            <path d="M-4,2 Q-2,-8 14,-4 Q12,0 4,-2 Z" fill="white"/>
+            <!-- つば -->
+            <path d="M14,-4 Q20,-2 18,2" stroke="white" stroke-width="2" fill="none" stroke-linecap="round"/>
+
+            <!-- 投球腕（左腕・頭上から大きく振り下ろし） -->
+            <!-- 上腕 -->
+            <path d="M6,14 Q16,4 24,-6 Q26,-10 22,-12 Q16,-8 8,4 Z" fill="white"/>
+            <!-- 前腕（リリースポイント・斜め下へ） -->
+            <path d="M22,-12 Q30,-18 36,-22" stroke="white" stroke-width="7" fill="none" stroke-linecap="round"/>
+            <path d="M34,-20 Q40,-24 44,-26" stroke="white" stroke-width="5" fill="none" stroke-linecap="round"/>
+            <!-- 手首スナップ -->
+            <path d="M42,-25 Q46,-28 48,-26" stroke="white" stroke-width="4" fill="none" stroke-linecap="round"/>
+
+            <!-- グラブ腕（右腕・前方へ突き出し） -->
+            <path d="M2,16 Q-10,20 -20,18 Q-22,16 -20,12 Q-10,14 2,12 Z" fill="white"/>
+            <!-- グラブ -->
+            <path d="M-20,12 Q-28,10 -30,16 Q-26,20 -18,18 Z" fill="white"/>
+
+            <!-- ボール（リリース直後・左上） -->
+            <circle cx="50" cy="-28" r="5.5" fill="white"/>
+            <path d="M47,-31 Q50,-27 53,-29" stroke="rgba(100,100,100,0.4)" stroke-width="1.2" fill="none"/>
+            <path d="M48,-26 Q51,-30 54,-27" stroke="rgba(100,100,100,0.4)" stroke-width="1.2" fill="none"/>
+
+            <!-- ユニフォームのライン（胸番号あたり） -->
+            <path d="M2,14 Q4,22 4,30" stroke="rgba(255,255,255,0.3)" stroke-width="1.5" fill="none"/>
+          </g>
+        </svg>
+        <div id="inline-zone-grid" style="position:relative;z-index:1;display:grid;grid-template-columns:repeat(5,1fr);gap:3px;width:220px;height:220px"></div>
+      </div>
       <!-- 打席内投球一覧 -->
       <div style="flex:1;min-width:80px">
         <div style="font-size:.6rem;color:var(--muted);margin-bottom:.3rem">この打席</div>
@@ -527,6 +599,7 @@ nav::-webkit-scrollbar{display:none;}
     <span style="font-size:.7rem;color:var(--muted);letter-spacing:1px">チーム絞込:</span>
     <div class="tg-row" id="career-team-filter" style="margin-bottom:0">
       <button class="tg active" onclick="setCareerTeamFilter('all',this)">全選手</button>
+      <button class="tg" onclick="setCareerTeamFilter('kankogaku',this)">関学大附</button>
       <button class="tg" id="career-filter-home" onclick="setCareerTeamFilter('home',this)">ホーム</button>
       <button class="tg" id="career-filter-away" onclick="setCareerTeamFilter('away',this)">アウェイ</button>
     </div>
@@ -551,6 +624,7 @@ nav::-webkit-scrollbar{display:none;}
     <span style="font-size:.7rem;color:var(--muted);letter-spacing:1px">チーム絞込:</span>
     <div class="tg-row" id="saber-team-filter" style="margin-bottom:0">
       <button class="tg active" onclick="setSaberTeamFilter('all',this)">全選手</button>
+      <button class="tg" onclick="setSaberTeamFilter('kankogaku',this)">関学大附</button>
       <button class="tg" id="saber-filter-home" onclick="setSaberTeamFilter('home',this)">ホーム</button>
       <button class="tg" id="saber-filter-away" onclick="setSaberTeamFilter('away',this)">アウェイ</button>
     </div>
@@ -569,6 +643,14 @@ nav::-webkit-scrollbar{display:none;}
     <button class="tg" onclick="setAnalysisMode('pitcher',this)">🎯 投手分析</button>
   </div>
 
+  <!-- チームフィルター -->
+  <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.6rem;flex-wrap:wrap">
+    <span style="font-size:.7rem;color:var(--muted);letter-spacing:1px">チーム:</span>
+    <div class="tg-row" id="analysis-team-filter" style="margin-bottom:0">
+      <button class="tg active" onclick="setAnalysisTeamFilter('all',this)">全選手</button>
+      <button class="tg" onclick="setAnalysisTeamFilter('kankogaku',this)">関学大附</button>
+    </div>
+  </div>
   <!-- 選手選択 -->
   <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.8rem;flex-wrap:wrap">
     <span style="font-size:.7rem;color:var(--muted);letter-spacing:1px">選手:</span>
@@ -2613,6 +2695,11 @@ function updateTeamFilterLabels(){
 // プレイヤーリストをチームフィルターで絞り込む
 function filterPlayersByTeam(players, filter){
   if(filter === 'all') return players;
+  if(filter === 'kankogaku'){
+    const allTeams = loadTeams();
+    const kNames = new Set((allTeams.find(t=>t.name==='関学大附')?.players||[]).map(p=>p.name));
+    return players.filter(p => kNames.has(p.name) || (p.teams||[]).includes('関学大附'));
+  }
   const hn = G.teams.home, an = G.teams.away;
   const tname = filter === 'home' ? hn : an;
   return players.filter(p => p.teams && p.teams.includes(tname));
@@ -2767,7 +2854,7 @@ function renderCareer(type){
   const el=document.getElementById('career-content');
   if(!allPlayers.length){el.innerHTML='<div style="color:var(--muted);text-align:center;padding:2rem">通算データがありません。試合を終了すると自動保存されます。</div>';return;}
   const players=filterPlayersByTeam(allPlayers,_careerTeamFilter);
-  const filterLabel=_careerTeamFilter==='all'?'全選手':_careerTeamFilter==='home'?(G.teams.home||'ホーム'):(G.teams.away||'アウェイ');
+  const filterLabel=_careerTeamFilter==='all'?'全選手':_careerTeamFilter==='kankogaku'?'関学大附':_careerTeamFilter==='home'?(G.teams.home||'ホーム'):(G.teams.away||'アウェイ');
   if(type==='batting'){
     const bat=players.filter(p=>p.ab>0||p.h>0);
     if(!bat.length){el.innerHTML=`<div style="color:var(--muted);text-align:center;padding:2rem">「${filterLabel}」の打撃データなし</div>`;return;}
@@ -2867,7 +2954,7 @@ function renderSaber(type){
   const career=loadCareer(),allPlayers=Object.values(career);
   if(!allPlayers.length){el.innerHTML='<div style="color:var(--muted);text-align:center;padding:2rem">通算データがありません</div>';return;}
   const players=filterPlayersByTeam(allPlayers,_saberTeamFilter);
-  const filterLabel=_saberTeamFilter==='all'?'全選手':_saberTeamFilter==='home'?(G.teams.home||'ホーム'):(G.teams.away||'アウェイ');
+  const filterLabel=_saberTeamFilter==='all'?'全選手':_saberTeamFilter==='kankogaku'?'関学大附':_saberTeamFilter==='home'?(G.teams.home||'ホーム'):(G.teams.away||'アウェイ');
   if(type==='batting'){
     const bat=players.filter(p=>p.ab>=5);
     if(!bat.length){el.innerHTML=`<div style="color:var(--muted);text-align:center;padding:2rem">「${filterLabel}」の打撃データが足りません（最低5打数）</div>`;return;}
@@ -3062,9 +3149,40 @@ function renderInlineZone(){
           <span style="font-size:.6rem;color:var(--muted)">${zl}</span>
           ${spd}
         </div>`;
-      }).join('');
+      }).join('') + '<button onclick="undoLastPitch()" style="margin-top:.4rem;width:100%;padding:.25rem;border-radius:6px;border:1px solid var(--muted);background:transparent;color:var(--muted);font-size:.65rem;cursor:pointer">↩ 最後の1球を取消</button>';
     }
   }
+}
+
+function undoLastPitch(){
+  if(!_atBatPitches.length){ toast('取消できる投球がありません'); return; }
+  const last = _atBatPitches.pop();
+
+  // G.pitchLog からも削除
+  const idx = G.pitchLog.lastIndexOf(last);
+  if(idx >= 0) G.pitchLog.splice(idx, 1);
+  else if(G.pitchLog.length) G.pitchLog.pop();
+
+  // 球数を1戻す
+  G.pitchCount[G.fielding] = Math.max(0, (G.pitchCount[G.fielding]||0) - 1);
+
+  // カウントを1戻す
+  const r = last.result;
+  if(r === 'ball'){
+    G.balls = Math.max(0, G.balls - 1);
+  } else if(r === 'called' || r === 'swing'){
+    G.strikes = Math.max(0, G.strikes - 1);
+  } else if(r === 'foul'){
+    // ファールは2ストライク未満のときだけストライクが増えていた
+    if(G.strikes > 0) G.strikes = Math.max(0, G.strikes - 1);
+  }
+  // 安打・凡打・本塁打・死球は打席終了系なので通常ここには来ない
+
+  saveHistory();
+  renderCount();
+  renderPitcherBox();
+  renderInlineZone();
+  toast('↩ 1球取り消しました');
 }
 
 function selectInlinePitchType(id){
@@ -3079,16 +3197,39 @@ function tapZone(zone){
 
   const isStrike = STRIKE_ZONES.has(zone);
 
-  // ストライクゾーン → 結果選択ポップアップ（ストライク系のみ先に出す）
-  // ボールゾーン → すぐボール記録
   if(!isStrike){
-    // ボール
-    _recordPitch(zone, _inlinePitchType, 'ball');
-    processBall();
+    // ボールゾーン → ボール結果選択ポップアップ
+    _showBallZoneTapResultPopup(zone);
   } else {
     // ストライクゾーンは結果選択
     _showZoneTapResultPopup(zone);
   }
+}
+
+function _showBallZoneTapResultPopup(zone){
+  const pt = PITCH_TYPES.find(t=>t.id===_inlinePitchType);
+  const RESULTS = [
+    {id:'called', label:'見逃し',  mark:'●', color:'#4da6ff'},
+    {id:'swing',  label:'空振り',  mark:'×', color:'#ff4d4d'},
+    {id:'foul',   label:'ファール',mark:'◆', color:'#f0c93a'},
+    {id:'hit',    label:'安打',    mark:'★', color:'#44cc77'},
+    {id:'out',    label:'凡打',    mark:'▲', color:'#aaa'},
+    {id:'hr',     label:'本塁打',  mark:'🔥', color:'#ff8c00'},
+    {id:'ball',   label:'ボール',  mark:'○', color:'#888'},
+    {id:'hbp',    label:'死球',    mark:'🤕', color:'#ff8c42'},
+  ];
+  const btns = RESULTS.map(r=>
+    `<button onclick="confirmZoneTap(${zone},'${r.id}')" style="padding:.5rem .4rem;border-radius:8px;border:1px solid ${r.color};background:rgba(0,0,0,.2);color:${r.color};font-size:.78rem;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:.15rem;min-width:52px">
+      <span style="font-size:1rem">${r.mark}</span>
+      <span>${r.label}</span>
+    </button>`
+  ).join('');
+  showPopup(`<div style="text-align:center;margin-bottom:.6rem">
+      <span style="font-size:.7rem;color:var(--muted)">ボールゾーン ｜ </span>
+      <span style="font-size:.7rem;color:${pt?.color||'#fff'}">${pt?.label||''}</span>
+    </div>
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:.4rem;margin-bottom:.5rem">${btns}</div>
+    <button class="btn btn-ghost" style="width:100%;font-size:.75rem" onclick="closePopup()">キャンセル</button>`);
 }
 
 function _showZoneTapResultPopup(zone){
@@ -3099,12 +3240,13 @@ function _showZoneTapResultPopup(zone){
     {id:'hit',    label:'安打',    mark:'★', color:'#44cc77'},
     {id:'out',    label:'凡打',    mark:'▲', color:'#aaa'},
     {id:'hr',     label:'本塁打',  mark:'🔥', color:'#ff8c00'},
+    {id:'ball',   label:'ボール',  mark:'○', color:'#888'},
+    {id:'hbp',    label:'死球',    mark:'🤕', color:'#ff8c42'},
   ];
-  const BALL_RESULT = {id:'ball', label:'ボール', mark:'○', color:'#888'};
   const zl = STRIKE_LABELS[zone]||'ストライク';
   const pt = PITCH_TYPES.find(t=>t.id===_inlinePitchType);
 
-  const btns = [...STRIKE_RESULTS, BALL_RESULT].map(r=>
+  const btns = STRIKE_RESULTS.map(r=>
     `<button onclick="confirmZoneTap(${zone},'${r.id}')" style="padding:.5rem .4rem;border-radius:8px;border:1px solid ${r.color};background:rgba(0,0,0,.2);color:${r.color};font-size:.78rem;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:.15rem;min-width:52px">
       <span style="font-size:1rem">${r.mark}</span>
       <span>${r.label}</span>
@@ -3130,12 +3272,22 @@ function confirmZoneTap(zone, resultId){
     processStrike(true);
   } else if(resultId === 'hit'){
     showHitPopup(zone);
-  } else if(resultId === 'out'){
-    showGroundFlyPopup(zone);
-  } else if(resultId === 'hr'){
+  } else if(resultId === 'single'){
+    showHitPopupWithType('single', zone);
+  } else if(resultId === 'double'){
+    showHitPopupWithType('double', zone);
+  } else if(resultId === 'triple'){
+    showHitPopupWithType('triple', zone);
+  } else if(resultId === 'homerun' || resultId === 'hr'){
     handleResult('homerun');
     _atBatPitches = [];
     renderInlineZone();
+  } else if(resultId === 'hbp'){
+    handleResult('hbp');
+    _atBatPitches = [];
+    renderInlineZone();
+  } else if(resultId === 'out'){
+    showGroundFlyPopup(zone);
   }
 }
 
@@ -3227,6 +3379,25 @@ function showHitPopup(zone){
       <div style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.8rem">${_fielderBtns('confirmHitWithFielder')}</div>
       <button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:.3rem" onclick="confirmHitWithFielder(null)">記録しない</button>
     </div>
+    <button class="btn btn-ghost" style="width:100%" onclick="closePopup()">キャンセル</button>`);
+}
+
+// 安打種類が確定済みの場合（ボールゾーンからの安打）
+function showHitPopupWithType(type, zone){
+  _selectedHitType = type;
+  const typeLabels = {single:'単打', double:'二塁打', triple:'三塁打', homerun:'本塁打'};
+  // ホームランはそのまま処理
+  if(type === 'homerun'){
+    handleResult('homerun');
+    _atBatPitches = [];
+    renderInlineZone();
+    return;
+  }
+  // それ以外は守備位置選択
+  showPopup(`<h3>安打 — ${typeLabels[type]||type}</h3>
+    <div style="font-size:.7rem;color:var(--muted);letter-spacing:1px;margin-bottom:.4rem">どこに飛んだか</div>
+    <div style="display:flex;flex-wrap:wrap;gap:.3rem;margin-bottom:.8rem">${_fielderBtns('confirmHitWithFielder')}</div>
+    <button class="btn btn-ghost btn-sm" style="width:100%;margin-bottom:.3rem" onclick="confirmHitWithFielder(null)">記録しない</button>
     <button class="btn btn-ghost" style="width:100%" onclick="closePopup()">キャンセル</button>`);
 }
 
@@ -3763,12 +3934,13 @@ function sumArr(arr){return(arr||[]).reduce((a,v)=>a+v,0);}
 
 // ═══════════════════ INIT ═══════════════════
 document.addEventListener('DOMContentLoaded',()=>{
+  document.body.style.visibility='visible';
   document.getElementById('cfg-date').value=new Date().toISOString().split('T')[0];
   fillSample('home');fillSample('away');
   initSetupPage();
 
   // 関学大附チームを初回のみ自動登録
-  const KANKOGAKU_KEY = 'bpm_kankogaku_v2';
+  const KANKOGAKU_KEY = 'bpm_kankogaku_v3';
   if(!localStorage.getItem(KANKOGAKU_KEY)){
     const kankogakuPlayers = [
       {name:'石原文太',  num:'1', pos:'投手',  isPitcher:true,throws:'右',bats:'右'},
@@ -3807,17 +3979,52 @@ document.addEventListener('DOMContentLoaded',()=>{
       {name:'小谷野真翔',num:'34',pos:'外野手',isPitcher:false,throws:'右',bats:'右'},
       {name:'石井涼',    num:'35',pos:'投手',  isPitcher:true,throws:'右',bats:'右'},
       {name:'倉林佳希',  num:'36',pos:'内野手',isPitcher:false,throws:'右',bats:'右'},
+      // ── 2026新入生 ──
+      {name:'新井 勇大',   num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'植松 慎太',   num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'水野 世渚',   num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'渡邉 成留',   num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'田部井 晃汰', num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'西山 永遠',   num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'鈴木 大和',   num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'大沼 蓮',     num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'萩原 匠砥',   num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'喜多見 浬',   num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'島田 琉希',   num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'鳥海 誠太',   num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'木村 偉旺',   num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'天笠 窓来',   num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'浜田 翔斗',   num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'小倉 聡一郎', num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'込山 颯',     num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
+      {name:'菅原 瑶太',   num:'',pos:'',isPitcher:false,throws:'右',bats:'右'},
     ];
     const teams = loadTeams();
-    if(!teams.find(t=>t.name==='関学大附')){
+    const existing = teams.find(t=>t.name==='関学大附');
+    if(!existing){
       teams.push({name:'関学大附', players:kankogakuPlayers});
-      saveTeams(teams);
+    } else {
+      // 新入生など未登録の選手だけ追加
+      const existNames = new Set(existing.players.map(p=>p.name));
+      kankogakuPlayers.forEach(p=>{ if(!existNames.has(p.name)) existing.players.push(p); });
     }
+    saveTeams(teams);
     localStorage.setItem(KANKOGAKU_KEY, '1');
   }
 
+  renderHome();
+});
+
 // ═══════════════════ ANALYSIS ═══════════════════
 let _analysisMode = 'batter';
+let _analysisTeamFilter = 'all';
+
+function setAnalysisTeamFilter(val, btn){
+  _analysisTeamFilter = val;
+  document.querySelectorAll('#analysis-team-filter .tg').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  initAnalysisPage();
+}
 
 function setAnalysisMode(mode, btn){
   _analysisMode = mode;
@@ -3835,12 +4042,41 @@ function initAnalysisPage(){
   const sel = document.getElementById('analysis-player-sel');
   const current = sel.value;
 
-  // 選手リスト作成
+  // 選手リスト作成（チームフィルター適用）
+  const career = loadCareer();
+  const allTeams = loadTeams();
+  const kankogakuPlayers = new Set(
+    (allTeams.find(t=>t.name==='関学大附')?.players||[]).map(p=>p.name)
+  );
+
+  function _filterByTeam(name){
+    if(_analysisTeamFilter === 'all') return true;
+    if(_analysisTeamFilter === 'kankogaku'){
+      // チーム登録データから確認
+      if(kankogakuPlayers.has(name)) return true;
+      // careerのteamsにも確認
+      const cKey = Object.keys(career).find(k=>career[k].name===name);
+      if(cKey) return (career[cKey].teams||[]).includes('関学大附');
+      return false;
+    }
+    return true;
+  }
   let names;
   if(_analysisMode === 'batter'){
-    names = [...new Set(allLogs.map(a=>a.name))].filter(Boolean).sort();
+    // チーム登録からも選手名を補完
+    const fromTeamReg = _analysisTeamFilter==='kankogaku'
+      ? [...kankogakuPlayers]
+      : allTeams.flatMap(t=>t.players.map(p=>p.name));
+    names = [...new Set([...allLogs.map(a=>a.name),...fromTeamReg])].filter(Boolean).filter(_filterByTeam).sort();
   } else {
-    names = [...new Set(allLogs.map(a=>a.pitcherName))].filter(Boolean).sort();
+    // 投手: atBatLogのpitcherName + careerのisPitcher=true + チーム登録の投手
+    const fromLogs = [...new Set(allLogs.map(a=>a.pitcherName))].filter(Boolean);
+    const fromCareer = Object.values(career).filter(p=>p.isPitcher&&p.ip>0).map(p=>p.name);
+    const fromTeamRegP = (_analysisTeamFilter==='kankogaku'
+      ? (allTeams.find(t=>t.name==='関学大附')?.players||[])
+      : allTeams.flatMap(t=>t.players)
+    ).filter(p=>p.isPitcher).map(p=>p.name);
+    names = [...new Set([...fromLogs,...fromCareer,...fromTeamRegP])].filter(_filterByTeam).sort();
   }
 
   sel.innerHTML = '<option value="">— 選手を選択 —</option>' +
@@ -4183,6 +4419,9 @@ function renderPitcherAnalysis(name, allLogs, el){
       const avg = b.ab>0?(b.h/b.ab).toFixed(3):'---';
       const barW = Math.round((b.runs/maxRuns)*100);
       const runsColor = b.runs>=2?'var(--red)':b.runs===1?'var(--accent)':'var(--green)';
+      const barHtml = b.runs>0
+        ? '<div style="height:4px;border-radius:2px;background:var(--border);overflow:hidden"><div style="height:100%;width:'+barW+'%;background:'+runsColor+';border-radius:2px;transition:width .3s"></div></div>'
+        : '';
       html += `<div style="background:var(--panel2);border-radius:8px;padding:.4rem .6rem">
         <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.2rem">
           <span style="font-size:.68rem;color:var(--muted);min-width:6rem">${b.label}</span>
@@ -4191,9 +4430,7 @@ function renderPitcherAnalysis(name, allLogs, el){
           <span style="font-size:.62rem;color:var(--muted)">被打率:${avg}</span>
           <span style="font-size:.72rem;font-weight:700;color:${runsColor};margin-left:auto">${b.runs}失点</span>
         </div>
-        ${b.runs>0?`<div style="height:4px;border-radius:2px;background:var(--border);overflow:hidden">
-          <div style="height:100%;width:${barW}%;background:${runsColor};border-radius:2px;transition:width .3s"></div>
-        </div>`:''}
+        ${barHtml}
       </div>`;
     });
     html += `</div>`;
@@ -4202,8 +4439,6 @@ function renderPitcherAnalysis(name, allLogs, el){
   el.innerHTML = html;
 }
 
-  renderHome();
-});
 
 // 投手が投げたイニングセットを返す
 function _getPitcherInnings(name, g){
@@ -4221,4 +4456,3 @@ function _getPitcherInnings(name, g){
 </script>
 </body>
 </html>
-
