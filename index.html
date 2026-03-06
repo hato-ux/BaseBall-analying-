@@ -352,7 +352,11 @@ nav::-webkit-scrollbar{display:none;}
     </div>
   </div>
   <div class="card">
-    <div class="card-t">スタメン登録</div>
+    <div class="card-t" style="display:flex;align-items:center;justify-content:space-between">
+      <span>スタメン登録</span>
+      <button class="btn btn-b btn-sm" onclick="openLineupCamera()" style="font-size:.72rem;padding:.3rem .7rem">📷 写真から読込</button>
+    </div>
+    <input type="file" id="lineup-camera-input" accept="image/*" capture="environment" style="display:none" onchange="handleLineupPhoto(this)">
     <div class="tg-row" id="lu-tabs">
       <button class="tg active" onclick="showLuTab('home',this)" id="lu-tab-home">ホーム</button>
       <button class="tg" onclick="showLuTab('away',this)" id="lu-tab-away">アウェイ</button>
@@ -4376,6 +4380,176 @@ function deleteScheduleItem(date,title){
   if(!confirm('「'+title+'」を削除しますか？')) return;
   saveSchedules(loadSchedules().filter(x=>!(x.date===date&&x.title===title)));
   renderSchedule(); toast('🗑 削除しました');
+}
+
+
+// ═══════════════════ LINEUP CAMERA ═══════════════════
+function openLineupCamera(){
+  document.getElementById('lineup-camera-input').click();
+}
+
+async function handleLineupPhoto(input){
+  if(!input.files||!input.files[0]) return;
+  const file = input.files[0];
+  input.value = ''; // リセット
+
+  // ローディング表示
+  showPopup('<div style="text-align:center;padding:1.5rem">'
+    + '<div style="font-size:1.5rem;margin-bottom:.8rem">🔍</div>'
+    + '<div style="font-weight:700;margin-bottom:.4rem">打順表を解析中...</div>'
+    + '<div style="font-size:.75rem;color:var(--muted)">AIが選手名を読み取っています</div>'
+    + '</div>');
+
+  try {
+    // 画像をbase64に変換
+    const base64 = await new Promise((res, rej)=>{
+      const r = new FileReader();
+      r.onload = ()=>res(r.result.split(',')[1]);
+      r.onerror = ()=>rej(new Error('読み込み失敗'));
+      r.readAsDataURL(file);
+    });
+
+    const mediaType = file.type || 'image/jpeg';
+
+    // Claude APIで解析
+    const resp = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json'},
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-20250514',
+        max_tokens: 1000,
+        messages: [{
+          role: 'user',
+          content: [
+            {
+              type: 'image',
+              source: { type: 'base64', media_type: mediaType, data: base64 }
+            },
+            {
+              type: 'text',
+              text: `この画像は野球の打順表です。以下のJSON形式だけで返してください。他の文字は一切不要です。
+{
+  "lineup": [
+    {"order": 1, "name": "選手名", "pos": "守備位置"},
+    {"order": 2, "name": "選手名", "pos": "守備位置"},
+    ...
+  ],
+  "pitcher": {"name": "先発投手名", "pos": "投手"}
+}
+・打順は1〜9番まで
+・名前が読み取れない場合は""（空文字）
+・守備位置は投手/捕手/一塁手/二塁手/三塁手/遊撃手/左翼手/中堅手/右翼手のいずれか、不明なら""
+・先発投手が打順外に別記されている場合はpitcherに入れる、なければnullにする
+・JSONだけ返す`
+            }
+          ]
+        }]
+      })
+    });
+
+    const data = await resp.json();
+    const text = data.content.map(c=>c.text||'').join('');
+    const clean = text.replace(/```json|```/g,'').trim();
+    const parsed = JSON.parse(clean);
+
+    showLineupConfirm(parsed);
+
+  } catch(e) {
+    console.error(e);
+    showPopup('<div style="text-align:center;padding:1rem">'
+      + '<div style="font-size:1.5rem;margin-bottom:.6rem">⚠️</div>'
+      + '<div style="font-weight:700;margin-bottom:.4rem">読み取りに失敗しました</div>'
+      + '<div style="font-size:.75rem;color:var(--muted);margin-bottom:.8rem">'+e.message+'</div>'
+      + '<button class="btn btn-ghost" onclick="closePopup()" style="width:100%">閉じる</button>'
+      + '</div>');
+  }
+}
+
+// 確認・修正画面
+let _cameraLineupResult = null;
+function showLineupConfirm(parsed){
+  _cameraLineupResult = parsed;
+  const lu = parsed.lineup || [];
+  const pit = parsed.pitcher;
+
+  let rows = '';
+  for(let i=0;i<9;i++){
+    const p = lu.find(x=>x.order===(i+1)) || {order:i+1,name:'',pos:''};
+    rows += '<div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.4rem">'
+      + '<div style="min-width:20px;font-size:.75rem;color:var(--muted);font-weight:700">'+(i+1)+'</div>'
+      + '<input id="cam-name-'+(i+1)+'" value="'+p.name+'" placeholder="選手名" style="flex:1;background:var(--panel3);border:1px solid var(--border);border-radius:6px;padding:.35rem .5rem;color:var(--fg);font-size:.82rem">'
+      + '<input id="cam-pos-'+(i+1)+'" value="'+(p.pos||'')+'" placeholder="守備" style="width:72px;background:var(--panel3);border:1px solid var(--border);border-radius:6px;padding:.35rem .5rem;color:var(--fg);font-size:.78rem">'
+      + '</div>';
+  }
+
+  const pitName = pit?pit.name:'';
+  rows += '<div style="margin:.6rem 0 .4rem;font-size:.65rem;color:var(--muted);letter-spacing:2px">⚾ 先発投手（打順外）</div>'
+    + '<input id="cam-pitcher" value="'+pitName+'" placeholder="先発投手名" style="width:100%;background:var(--panel3);border:1px solid rgba(77,166,255,.4);border-radius:6px;padding:.35rem .5rem;color:var(--fg);font-size:.82rem">';
+
+  const html = '<div style="font-weight:700;margin-bottom:.3rem">📋 読み取り結果を確認</div>'
+    + '<div style="font-size:.7rem;color:var(--muted);margin-bottom:.8rem">修正してから反映してください</div>'
+    + rows
+    + '<div style="display:flex;gap:.4rem;margin-top:.8rem;flex-wrap:wrap">'
+    + '<select id="cam-target-side" style="flex:1;background:var(--panel3);border:1px solid var(--border);border-radius:8px;padding:.4rem;color:var(--fg);font-size:.82rem">'
+    + '<option value="home">ホーム打順に反映</option>'
+    + '<option value="away">アウェイ打順に反映</option>'
+    + '</select>'
+    + '</div>'
+    + '<button class="btn btn-y" onclick="applyLineupCamera()" style="width:100%;margin-top:.5rem">✅ 反映する</button>'
+    + '<button class="btn btn-ghost" onclick="closePopup()" style="width:100%;margin-top:.3rem">キャンセル</button>';
+
+  showPopup(html);
+}
+
+function applyLineupCamera(){
+  const side = document.getElementById('cam-target-side').value;
+  const teams = loadTeams();
+  const teamPlayers = teams.flatMap(t=>t.players);
+
+  // 登録済み選手とマッチング
+  function matchPlayer(name){
+    if(!name) return null;
+    // 完全一致
+    let p = teamPlayers.find(p=>p.name===name);
+    if(p) return JSON.parse(JSON.stringify(p));
+    // 部分一致（姓のみなど）
+    p = teamPlayers.find(p=>p.name.includes(name)||name.includes(p.name));
+    if(p) return JSON.parse(JSON.stringify(p));
+    // マッチしなければ新規
+    return {name:name, pos:'', num:'', isPitcher:false, throws:'右', bats:'右'};
+  }
+
+  // 打順に反映
+  if(!Array.isArray(G.lineup[side])) G.lineup[side]=[];
+  while(G.lineup[side].length<9) G.lineup[side].push(null);
+
+  for(let i=0;i<9;i++){
+    const name = (document.getElementById('cam-name-'+(i+1)).value||'').trim();
+    const pos  = (document.getElementById('cam-pos-'+(i+1)).value||'').trim();
+    if(name){
+      const p = matchPlayer(name);
+      if(pos) p.pos = pos;
+      G.lineup[side][i] = p;
+    } else {
+      G.lineup[side][i] = null;
+    }
+  }
+
+  // 先発投手
+  const pitName = (document.getElementById('cam-pitcher').value||'').trim();
+  if(pitName){
+    const pit = matchPlayer(pitName);
+    pit.isPitcher = true;
+    pit.pos = '投手';
+    G.pitcher[side] = pit;
+  }
+
+  closePopup();
+  // 反映したサイドのタブを表示
+  const tabBtn = document.getElementById('lu-tab-'+side);
+  if(tabBtn) showLuTab(side, tabBtn);
+  renderLineupSlots(side);
+  toast('✅ 打順を反映しました（'+side==='home'?'ホーム':'アウェイ'+'）');
 }
 
 // ═══════════════════ ANALYSIS ═══════════════════
