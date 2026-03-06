@@ -267,13 +267,14 @@ nav::-webkit-scrollbar{display:none;}
 </header>
 <nav>
   <button class="tb active" onclick="goTab('home',this)">🏠 ホーム</button>
-  <button class="tb" onclick="goTab('teams',this)">👥 チーム</button>
-  <button class="tb" id="tb-setup" onclick="goTab('setup',this)">⚙️ 設定</button>
+  <button class="tb" id="tb-schedule" onclick="goTab('schedule',this)">📅 日程</button>
   <button class="tb" onclick="goTab('game',this)" id="tb-game">⚾ 試合</button>
   <button class="tb" onclick="goTab('history',this)">📁 履歴</button>
+  <button class="tb" onclick="goTab('teams',this)">👥 チーム</button>
   <button class="tb" id="tb-career" onclick="goTab('career',this)">🏆 通算成績</button>
   <button class="tb" id="tb-saber" onclick="goTab('saber',this)">🔬 セイバー</button>
   <button class="tb" id="tb-analysis" onclick="goTab('analysis',this)">📊 分析</button>
+  <button class="tb" id="tb-setup" onclick="goTab('setup',this)">⚙️ 設定</button>
 </nav>
 <div class="toast" id="toast"></div>
 <div class="overlay" id="overlay"><div class="popup" id="popup-inner"></div></div>
@@ -323,9 +324,9 @@ nav::-webkit-scrollbar{display:none;}
   <div class="card">
     <div class="card-t">基本情報</div>
     <div class="g3" style="margin-bottom:.8rem">
-      <div class="fg"><label>ホームチーム</label><input id="cfg-home" value="ホーム"></div>
+      <div class="fg"><label>ホームチーム</label><input id="cfg-home" value="関学大附"></div>
       <div class="fg"><label>アウェイチーム</label><input id="cfg-away" value="アウェイ"></div>
-      <div class="fg"><label>球場</label><input id="cfg-stadium" placeholder="東京ドーム"></div>
+      <div class="fg"><label>球場</label><input id="cfg-stadium" value="関学大附グランド" placeholder="関学大附グランド"></div>
     </div>
     <div class="g2" style="margin-bottom:.8rem">
       <div class="fg"><label>試合種別</label>
@@ -387,8 +388,7 @@ nav::-webkit-scrollbar{display:none;}
         <button class="btn btn-ghost btn-sm" onclick="loadFromCareer('home')">📁 通算から読込</button>
         <button class="btn btn-ghost btn-sm" onclick="clearLineup('home')">🗑 クリア</button>
       </div>
-      <!-- 従来のrows（手動追加用に残す） -->
-      <div id="lu-home-rows" style="margin-top:.5rem"></div>
+
     </div>
 
     <!-- アウェイ -->
@@ -412,7 +412,7 @@ nav::-webkit-scrollbar{display:none;}
         <button class="btn btn-ghost btn-sm" onclick="loadFromCareer('away')">📁 通算から読込</button>
         <button class="btn btn-ghost btn-sm" onclick="clearLineup('away')">🗑 クリア</button>
       </div>
-      <div id="lu-away-rows" style="margin-top:.5rem"></div>
+
     </div>
   </div>
   <div style="text-align:center;margin:1.5rem 0">
@@ -581,6 +581,26 @@ nav::-webkit-scrollbar{display:none;}
 </div>
 
 <!-- HISTORY -->
+
+<!-- ═══════════════════ SCHEDULE PAGE ═══════════════════ -->
+<div class="page" id="page-schedule" style="padding:1rem">
+
+  <!-- ヘッダー -->
+  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:1rem">
+    <div>
+      <div class="sec-t">SCHEDULE</div>
+      <div class="sec-s">年間日程・試合履歴</div>
+    </div>
+    <button class="btn" onclick="openAddSchedule()" style="font-size:.8rem;padding:.5rem .9rem">＋ 追加</button>
+  </div>
+
+  <!-- 月フィルター -->
+  <div id="sched-month-filter" style="display:flex;gap:.4rem;overflow-x:auto;scrollbar-width:none;margin-bottom:1rem;padding-bottom:.2rem"></div>
+
+  <!-- カレンダーリスト -->
+  <div id="sched-list"></div>
+</div>
+
 <div class="page" id="page-history">
   <div class="sec-t">試合履歴</div>
   <div id="history-list"></div>
@@ -713,6 +733,7 @@ function goTab(t,btn){
   if(t==='career') renderCareer('batting');
   if(t==='saber') renderSaber('batting');
   if(t==='analysis') initAnalysisPage();
+  if(t==='schedule') renderSchedule();
 }
 
 // ═══════════════════ HOME ═══════════════════
@@ -1006,13 +1027,22 @@ const _spSlot = {home:null, away:null};
 let _swapMode = {side:null, idx:null};
 
 function initSetupPage(){
+  const homeEl = document.getElementById('cfg-home');
+  const stadEl = document.getElementById('cfg-stadium');
+  if(homeEl && !homeEl.value) homeEl.value = '関学大附';
+  if(stadEl && !stadEl.value) stadEl.value = '関学大附グランド';
   ['home','away'].forEach(side=>{
-    const sel = document.getElementById(`lu-${side}-team-sel`);
+    const sel = document.getElementById('lu-'+side+'-team-sel');
     if(!sel) return;
     const teams = loadTeams();
     const cur = sel.value;
     sel.innerHTML = '<option value="">― チームを選択 ―</option>' +
-      teams.map((t,i)=>`<option value="${i}"${String(i)===cur?' selected':''}>${t.name}（${t.players.length}名）</option>`).join('');
+      teams.map((t,i)=>'<option value="'+i+'"'+(String(i)===cur?' selected':'')+'>'+t.name+'（'+t.players.length+'名）</option>').join('');
+    // ホームは関学大附を自動選択（初回のみ）
+    if(side==='home' && !cur){
+      const kIdx = teams.findIndex(t=>t.name==='関学大附');
+      if(kIdx>=0){ sel.value = String(kIdx); loadTeamToBench('home'); }
+    }
   });
   ['home','away'].forEach(side=>{
     if(!Array.isArray(G.lineup[side])) G.lineup[side]=[];
@@ -1427,11 +1457,12 @@ function renderInlinePlayBtns(){
   ];
   el.innerHTML = plays.map(p=>{
     const disabled = !G.started || G.gameOver || p.dis;
-    return `<button onclick="${disabled?'':(`inlinePlay('${p.f}')`)}\"
-      style="padding:.3rem .5rem;border-radius:14px;font-size:.68rem;cursor:${disabled?'default':'pointer'};
-        border:1px solid ${disabled?'var(--border)':'var(--border2)'};
-        background:var(--panel2);color:${disabled?'var(--muted)':'var(--text)'};
-        opacity:${disabled?'.4':'1'};white-space:nowrap">${p.l}</button>`;
+    const oc = disabled ? '' : 'onclick="inlinePlay(\'' + p.f + '\')"';
+    return '<button ' + oc
+      + ' style="padding:.3rem .5rem;border-radius:14px;font-size:.68rem;cursor:' + (disabled?'default':'pointer') + ';'
+      + 'border:1px solid ' + (disabled?'var(--border)':'var(--border2)') + ';'
+      + 'background:var(--panel2);color:' + (disabled?'var(--muted)':'var(--text)') + ';'
+      + 'opacity:' + (disabled?'.4':'1') + ';white-space:nowrap">' + p.l + '</button>';
   }).join('');
 }
 
@@ -1532,6 +1563,8 @@ function renderActionBtns(){
     {l:'🔴 ゴロアウト',c:'out',f:'groundout'},
     {l:'🔵 フライアウト',c:'out',f:'flyout'},
     {l:'⭕ 三振',c:'out',f:'strikeout'},
+    {l:'🔴🔴 ゲッツー',c:'out'+(hasRunner?'':' disabled'),f:'dp'},
+    {l:'🔴🔴🔴 トリプルプレー',c:'out'+(hasRunner?'':' disabled'),f:'tp'},
     {l:'🚶 四球',c:'sp',f:'walk'},
     {l:'🤕 死球',c:'sp',f:'hbp'},
     {l:'🏃 盗塁',c:'sp'+(hasRunner?'':' disabled'),f:'steal'},
@@ -1906,6 +1939,8 @@ function handleResult(type){
     case 'hbp':     if(batter){batter.bb++;} trackPitcher('bb'); runs=advForced(1); logText=`${bn} 死球`; logCls='bb'; pushAtBat('HBP'); endAB(); break;
     case 'catint':  if(batter){batter.bb++;} runs=advForced(1); logText=`${bn} 打撃妨害`; logCls='bb'; pushAtBat('CI'); endAB(); toast('🛡️ 打撃妨害 出塁'); break;
     // ── アウト ──
+    case 'dp': showDPPopup(); return;
+    case 'tp': showTPPopup(); return;
     case 'go':
     case 'groundout': if(batter){batter.ab++;} G.outs++;G.balls=0;G.strikes=0; trackPitcher('out'); logText=`${bn} ゴロアウト`; pushAtBat('ゴロ'); endAB(); break;
     case 'fo':
@@ -1997,6 +2032,102 @@ function manualStrike(){
 }
 
 // ═══════════════════ SPECIAL POPUPS ═══════════════════
+// DP/TP用グローバル変数（Safari対策）
+let _dpTpCandidates = [];
+
+function showDPPopup(){
+  const runners = G.bases.map((r,i)=>r?{name:r,base:i}:null).filter(Boolean);
+  if(!runners.length){ toast('⚠️ 走者がいません'); return; }
+  _dpTpCandidates = runners;
+  const batter = G.lineup[G.batting][G.batterIdx];
+  const bn = batter?batter.name:'打者';
+  let html = '<div style="font-weight:700;margin-bottom:.5rem">🔴🔴 ゲッツー</div>'
+    + '<div style="font-size:.73rem;color:var(--muted);margin-bottom:.8rem">打者（'+bn+'）は自動アウト<br>アウトになった走者を選択</div>';
+  runners.forEach((r,idx)=>{
+    const baseLabel = ['一','二','三'][r.base];
+    html += '<button class="btn btn-r" style="width:100%;margin-bottom:.4rem"'
+      + ' onclick="execDP('+idx+')">'+r.name+'（'+baseLabel+'塁）をアウト</button>';
+  });
+  html += '<button class="btn btn-ghost" style="width:100%;margin-top:.3rem" onclick="closePopup()">キャンセル</button>';
+  showPopup(html);
+}
+
+function execDP(idx){
+  saveHistory();
+  const r = _dpTpCandidates[idx];
+  const batter = G.lineup[G.batting][G.batterIdx];
+  const bn = batter?batter.name:'打者';
+  if(batter){ batter.ab++; batter.dp=(batter.dp||0)+1; }
+  G.bases[r.base] = null;
+  G.outs += 2; G.balls = 0; G.strikes = 0;
+  trackPitcher('out'); trackPitcher('out');
+  const inn = G.inning+'回'+(G.half==='top'?'表':'裏');
+  pushAtBat('DP');
+  pushLog(inn, bn+' ゲッツー（'+r.name+' アウト）', 'out');
+  closePopup();
+  endAB(); checkInningEnd(); renderGameUI();
+}
+
+// TP用：選択候補リスト（配列の配列）
+let _tpOptions = [];
+
+function showTPPopup(){
+  const runners = G.bases.map((r,i)=>r?{name:r,base:i}:null).filter(Boolean);
+  if(runners.length < 1){ toast('⚠️ 走者がいません'); return; }
+  _dpTpCandidates = runners;
+  _tpOptions = [];
+  const batter = G.lineup[G.batting][G.batterIdx];
+  const bn = batter?batter.name:'打者';
+  let html = '<div style="font-weight:700;margin-bottom:.5rem">🔴🔴🔴 トリプルプレー</div>'
+    + '<div style="font-size:.73rem;color:var(--muted);margin-bottom:.8rem">打者（'+bn+'）は自動アウト<br>アウトになった走者を選択</div>';
+
+  if(runners.length === 1){
+    _tpOptions.push([runners[0].base]);
+    html += '<button class="btn btn-r" style="width:100%;margin-bottom:.4rem"'
+      + ' onclick="execTP(0)">'+runners[0].name+'（'+['一','二','三'][runners[0].base]+'塁）をアウト</button>';
+  } else {
+    // 2人組み合わせ
+    for(let i=0;i<runners.length;i++){
+      for(let j=i+1;j<runners.length;j++){
+        const r1=runners[i], r2=runners[j];
+        const optIdx = _tpOptions.length;
+        _tpOptions.push([r1.base, r2.base]);
+        const l1=['一','二','三'][r1.base], l2=['一','二','三'][r2.base];
+        html += '<button class="btn btn-r" style="width:100%;margin-bottom:.4rem"'
+          + ' onclick="execTP('+optIdx+')">'+r1.name+'（'+l1+'塁）＋'+r2.name+'（'+l2+'塁）をアウト</button>';
+      }
+    }
+    // 全員アウト（3人以上）
+    if(runners.length >= 3){
+      const optIdx = _tpOptions.length;
+      _tpOptions.push(runners.map(r=>r.base));
+      const allLabel = runners.map(r=>r.name+'（'+['一','二','三'][r.base]+'塁）').join('＋');
+      html += '<button class="btn btn-r" style="width:100%;margin-bottom:.4rem"'
+        + ' onclick="execTP('+optIdx+')">'+allLabel+' 全員アウト</button>';
+    }
+  }
+  html += '<button class="btn btn-ghost" style="width:100%;margin-top:.3rem" onclick="closePopup()">キャンセル</button>';
+  showPopup(html);
+}
+
+function execTP(optIdx){
+  saveHistory();
+  const bases = _tpOptions[optIdx];
+  const batter = G.lineup[G.batting][G.batterIdx];
+  const bn = batter?batter.name:'打者';
+  if(batter){ batter.ab++; }
+  const names = bases.map(b=>G.bases[b]).filter(Boolean);
+  bases.forEach(b=>{ G.bases[b]=null; });
+  const outCount = 1 + bases.length;
+  G.outs += outCount; G.balls = 0; G.strikes = 0;
+  for(let i=0;i<outCount;i++) trackPitcher('out');
+  const inn = G.inning+'回'+(G.half==='top'?'表':'裏');
+  pushAtBat('TP');
+  pushLog(inn, bn+' トリプルプレー（'+names.join('・')+' アウト）', 'out');
+  closePopup();
+  checkInningEnd(); renderGameUI();
+}
+
 function showStealPopup(){
   let html=`<h3>🏃 盗塁</h3><p style="font-size:.76rem;color:var(--muted);margin-bottom:.8rem">走者と結果を選択</p>`;
   G.bases.forEach((r,i)=>{
@@ -3935,12 +4066,9 @@ function sumArr(arr){return(arr||[]).reduce((a,v)=>a+v,0);}
 // ═══════════════════ INIT ═══════════════════
 document.addEventListener('DOMContentLoaded',()=>{
   document.body.style.visibility='visible';
-  document.getElementById('cfg-date').value=new Date().toISOString().split('T')[0];
-  fillSample('home');fillSample('away');
-  initSetupPage();
 
   // 関学大附チームを初回のみ自動登録
-  const KANKOGAKU_KEY = 'bpm_kankogaku_v3';
+  const KANKOGAKU_KEY = 'bpm_kankogaku_v4';
   if(!localStorage.getItem(KANKOGAKU_KEY)){
     const kankogakuPlayers = [
       {name:'石原文太',  num:'1', pos:'投手',  isPitcher:true,throws:'右',bats:'右'},
@@ -4014,6 +4142,205 @@ document.addEventListener('DOMContentLoaded',()=>{
 
   renderHome();
 });
+
+
+
+// ═══════════════════ SCHEDULE ═══════════════════
+const SCHEDULE_KEY = 'bpm_schedule_v2';
+const DEFAULT_SCHEDULES = [{"date": "2026-03-07", "title": "熊谷商業", "type": "game"}, {"date": "2026-03-08", "title": "東海大相模・大森学園（城沼）", "type": "game"}, {"date": "2026-03-14", "title": "常総学院（V)", "type": "game"}, {"date": "2026-03-15", "title": "日大豊山（H)", "type": "game"}, {"date": "2026-03-20", "title": "大宮東（H)", "type": "game"}, {"date": "2026-03-21", "title": "桐生清桜（広沢）", "type": "game"}, {"date": "2026-03-22", "title": "常磐AM 富士見PM", "type": "game"}, {"date": "2026-03-25", "title": "桐生第一（H)", "type": "game"}, {"date": "2026-03-26", "title": "関東第一・加茂暁星（関）", "type": "game"}, {"date": "2026-03-28", "title": "川口青陵（H)", "type": "game"}, {"date": "2026-03-30", "title": "上武大学", "type": "game"}, {"date": "2026-03-31", "title": "桐生工業（H)", "type": "game"}, {"date": "2026-04-02", "title": "春日部共栄・横浜商大（春）", "type": "game"}, {"date": "2026-04-03", "title": "専大松戸（V)", "type": "game"}, {"date": "2026-04-04", "title": "下妻第一（H)", "type": "game"}, {"date": "2026-04-05", "title": "白鷗足利（V)", "type": "game"}, {"date": "2026-04-05", "title": "星野B（H)", "type": "game"}, {"date": "2026-04-07", "title": "国学院栃木（V)", "type": "game"}, {"date": "2026-04-26", "title": "八王子実践（H)", "type": "game"}, {"date": "2026-04-29", "title": "高経附（H)", "type": "game"}, {"date": "2026-05-02", "title": "高崎商大付（V)", "type": "game"}, {"date": "2026-05-03", "title": "太田東（H)", "type": "game"}, {"date": "2026-05-06", "title": "目黒日大・大森学園（H)", "type": "game"}, {"date": "2026-05-08", "title": "K-cup", "type": "tournament"}, {"date": "2026-05-09", "title": "浦和学院（V)", "type": "game"}, {"date": "2026-05-16", "title": "拓大紅陵（V)", "type": "game"}, {"date": "2026-05-17", "title": "木総・鹿学（木）", "type": "game"}, {"date": "2026-05-17", "title": "木総・駿台（B)(H)", "type": "game"}, {"date": "2026-05-23", "title": "川口・立志社（H)", "type": "game"}, {"date": "2026-05-24", "title": "国士館（V)", "type": "game"}, {"date": "2026-05-30", "title": "埼玉栄（V)", "type": "game"}, {"date": "2026-05-30", "title": "埼玉栄（H)", "type": "game"}, {"date": "2026-05-31", "title": "農大三（H)", "type": "game"}, {"date": "2026-05-31", "title": "農大三（V)", "type": "game"}, {"date": "2026-06-07", "title": "日大藤沢（V)", "type": "game"}, {"date": "2026-06-13", "title": "青藍泰斗A（V) B（H)", "type": "game"}, {"date": "2026-06-14", "title": "常磐大（V)", "type": "game"}, {"date": "2026-06-19", "title": "伊奈学園（V)", "type": "game"}, {"date": "2026-06-20", "title": "明秀日立（H)", "type": "game"}, {"date": "2026-06-27", "title": "上尾（H)", "type": "game"}, {"date": "2026-06-28", "title": "秀明英光（H)", "type": "game"}];
+
+function loadSchedules(){
+  try{
+    const saved = JSON.parse(localStorage.getItem(SCHEDULE_KEY)||'null');
+    if(saved) return saved;
+    localStorage.setItem(SCHEDULE_KEY, JSON.stringify(DEFAULT_SCHEDULES));
+    return JSON.parse(JSON.stringify(DEFAULT_SCHEDULES));
+  }catch(e){return JSON.parse(JSON.stringify(DEFAULT_SCHEDULES));}
+}
+function saveSchedules(s){localStorage.setItem(SCHEDULE_KEY,JSON.stringify(s));}
+
+let _schedMonth = null;
+
+function renderSchedule(){
+  const schedules = loadSchedules();
+  const games = loadGames();
+  const months = [...new Set(schedules.map(s=>s.date.slice(0,7)))].sort();
+
+  const mf = document.getElementById('sched-month-filter');
+  const allActive = _schedMonth===null;
+  mf.innerHTML = `<button onclick="_schedMonth=null;renderSchedule()" style="flex:none;padding:.35rem .85rem;border-radius:20px;border:1px solid ${allActive?'var(--accent)':'var(--border)'};background:${allActive?'var(--accent)':'transparent'};color:${allActive?'#000':'var(--fg)'};font-size:.75rem;cursor:pointer;font-weight:700">全て</button>` +
+    months.map(m=>{
+      const active = _schedMonth===m;
+      const mo = parseInt(m.split('-')[1]);
+      return `<button onclick="_schedMonth='${m}';renderSchedule()" style="flex:none;padding:.35rem .85rem;border-radius:20px;border:1px solid ${active?'var(--accent)':'var(--border)'};background:${active?'var(--accent)':'transparent'};color:${active?'#000':'var(--fg)'};font-size:.75rem;cursor:pointer;font-weight:700">${mo}月</button>`;
+    }).join('');
+
+  const filtered = _schedMonth ? schedules.filter(s=>s.date.startsWith(_schedMonth)) : schedules;
+
+  const grouped = {};
+  filtered.forEach(s=>{
+    const m=s.date.slice(0,7);
+    if(!grouped[m]) grouped[m]=[];
+    grouped[m].push(s);
+  });
+
+  const el = document.getElementById('sched-list');
+  if(!filtered.length){el.innerHTML='<div style="color:var(--muted);text-align:center;padding:2rem">日程がありません</div>';return;}
+
+  el.innerHTML = Object.entries(grouped).sort(([a],[b])=>a<b?-1:1).map(([month,items])=>{
+    const mo = parseInt(month.split('-')[1]);
+    const yr = month.split('-')[0];
+    const header = `<div style="font-family:'Bebas Neue',sans-serif;font-size:1.1rem;letter-spacing:3px;color:var(--accent);margin:1.2rem 0 .5rem;border-left:3px solid var(--accent);padding-left:.7rem">${mo}月 <span style="font-size:.7rem;color:var(--muted)">${yr}</span></div>`;
+
+    const rows = items.sort((a,b)=>a.date<b.date?-1:1).map(s=>{
+      const d = new Date(s.date+'T00:00:00');
+      const wd = ['日','月','火','水','木','金','土'][d.getDay()];
+      const wc = d.getDay()===0?'#ff4d4d':d.getDay()===6?'#4da6ff':'var(--muted)';
+      const day = parseInt(s.date.slice(8));
+      const linked = games.filter(g=>g.date===s.date && g.opponent && s.title.includes(g.opponent.replace(/[（(][^）)]*[）)]/,'')));
+      const tc = s.type==='tournament'?'#ff8c00':s.type==='event'?'#44cc77':'var(--accent)';
+      const tl = s.type==='tournament'?'大会':s.type==='event'?'行事':'練習試合';
+      const badge = linked.length ? `<span style="font-size:.6rem;background:rgba(77,166,255,.2);color:#4da6ff;padding:.1rem .35rem;border-radius:4px;margin-left:.4rem">記録${linked.length}</span>` : '';
+      const esc = s.title.replace(/'/g,"\\'")
+      return `<div onclick="onScheduleTap('${s.date}','${esc}')" style="display:flex;align-items:center;gap:.7rem;padding:.65rem .8rem;background:var(--panel2);border:1px solid var(--border);border-radius:10px;margin-bottom:.4rem;cursor:pointer;transition:border-color .2s" onmouseenter="this.style.borderColor='${tc}'" onmouseleave="this.style.borderColor='var(--border)'">
+        <div style="text-align:center;min-width:34px;flex-shrink:0">
+          <div style="font-size:1.15rem;font-weight:900;line-height:1;color:var(--fg)">${day}</div>
+          <div style="font-size:.63rem;color:${wc};font-weight:700">${wd}</div>
+        </div>
+        <div style="width:2px;height:30px;background:${tc};border-radius:1px;flex-shrink:0"></div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:.87rem;font-weight:700;color:var(--fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${s.title}${badge}</div>
+          <div style="font-size:.62rem;color:${tc};margin-top:.1rem">${tl}</div>
+        </div>
+        <div style="display:flex;gap:.25rem;flex-shrink:0">
+          <button onclick="event.stopPropagation();editScheduleItem('${s.date}','${esc}')" style="padding:.22rem .45rem;border-radius:6px;border:1px solid var(--border);background:transparent;color:var(--muted);font-size:.68rem;cursor:pointer">✏️</button>
+          <button onclick="event.stopPropagation();deleteScheduleItem('${s.date}','${esc}')" style="padding:.22rem .45rem;border-radius:6px;border:1px solid var(--border);background:transparent;color:#ff4d4d;font-size:.68rem;cursor:pointer">🗑</button>
+        </div>
+      </div>`;
+    }).join('');
+    return header+rows;
+  }).join('');
+}
+
+// チーム名をタイトルから抽出（括弧内除去）
+function _extractOpponent(title){
+  return title.replace(/[（(][^）)]*[）)]/g,'').replace(/[AB]チーム/g,'').replace(/[　\s]+/g,' ').trim();
+}
+
+function onScheduleTap(date, title){
+  const games = loadGames();
+  // 同日同対戦相手の試合を最大3件まで表示
+  const linked = games.filter(g=>g.date===date);
+  const opponent = _extractOpponent(title);
+
+  let html = `<div style="margin-bottom:.8rem">
+    <div style="font-size:.62rem;color:var(--muted);letter-spacing:2px">日程詳細</div>
+    <div style="font-size:1.05rem;font-weight:700;margin-top:.2rem">${title}</div>
+    <div style="font-size:.72rem;color:var(--muted)">${date}</div>
+  </div>`;
+
+  if(linked.length){
+    html += `<div style="font-size:.65rem;color:var(--muted);letter-spacing:2px;margin-bottom:.4rem">📁 試合記録 (${linked.length}件)</div>`;
+    html += linked.slice(0,3).map(g=>{
+      const s = g.score;
+      const score = s?`${s.our||0} - ${s.opp||0}`:'記録中';
+      const res = s?(s.our>s.opp?'勝':s.our<s.opp?'敗':'分'):'';
+      const rc = res==='勝'?'#44cc77':res==='敗'?'#ff4d4d':'#aaa';
+      return `<div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:.6rem .8rem;margin-bottom:.35rem;cursor:pointer" onclick="closePopup()">
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span style="font-size:.83rem;font-weight:700">${g.opponent||'---'}</span>
+          <span style="font-size:.95rem;font-weight:900;color:${rc}">${score}</span>
+        </div>
+        <div style="font-size:.62rem;color:var(--muted);margin-top:.1rem">${g.venue||''} ${res?'【'+res+'】':''}</div>
+      </div>`;
+    }).join('');
+  }
+
+  // 試合を記録する（最大3試合）
+  const canAdd = linked.length < 3;
+  if(canAdd){
+    html += `<button class="btn" onclick="closePopup();startGameFromSchedule('${date}','${opponent.replace(/'/g,"\\'")}')" style="width:100%;margin-top:.5rem">⚾ 試合を記録する${linked.length>0?' ('+linked.length+'/3)':''}</button>`;
+  } else {
+    html += `<div style="text-align:center;font-size:.75rem;color:var(--muted);margin-top:.5rem;padding:.5rem;border:1px solid var(--border);border-radius:8px">この日程の試合記録は3件が上限です</div>`;
+  }
+  html += `<button class="btn btn-ghost" onclick="closePopup()" style="width:100%;margin-top:.4rem">閉じる</button>`;
+  showPopup(html);
+}
+
+function startGameFromSchedule(date, opponent){
+  // 設定タブへ移動して日付・対戦相手を自動セット
+  goTab('setup', document.getElementById('tb-setup'));
+  setTimeout(()=>{
+    const dateEl = document.getElementById('cfg-date');
+    const awayEl = document.getElementById('cfg-away');
+    if(dateEl) dateEl.value = date;
+    if(awayEl && opponent) awayEl.value = opponent;
+    toast('✅ 日付・対戦相手を自動入力しました');
+    document.getElementById('page-setup').scrollTo({top:0, behavior:'smooth'});
+  }, 150);
+}
+
+function openAddSchedule(){
+  const today = new Date().toISOString().slice(0,10);
+  showPopup(`<div style="margin-bottom:.8rem;font-size:.9rem;font-weight:700">📅 日程を追加</div>
+    <div class="fg" style="margin-bottom:.6rem"><label>日付</label>
+      <input type="date" id="add-sched-date" value="${today}" style="width:100%;background:var(--panel3);border:1px solid var(--border);border-radius:8px;padding:.5rem;color:var(--fg);font-size:.9rem"></div>
+    <div class="fg" style="margin-bottom:.6rem"><label>タイトル（相手チーム名など）</label>
+      <input type="text" id="add-sched-title" placeholder="例：浦和学院（H）" style="width:100%;background:var(--panel3);border:1px solid var(--border);border-radius:8px;padding:.5rem;color:var(--fg);font-size:.9rem"></div>
+    <div class="fg" style="margin-bottom:.9rem"><label>種別</label>
+      <select id="add-sched-type" style="width:100%;background:var(--panel3);border:1px solid var(--border);border-radius:8px;padding:.5rem;color:var(--fg);font-size:.9rem">
+        <option value="game">練習試合</option>
+        <option value="tournament">大会</option>
+        <option value="event">行事・その他</option>
+      </select></div>
+    <button class="btn" onclick="confirmAddSchedule()" style="width:100%;margin-bottom:.4rem">追加</button>
+    <button class="btn btn-ghost" onclick="closePopup()" style="width:100%">キャンセル</button>`);
+}
+
+function confirmAddSchedule(){
+  const date=document.getElementById('add-sched-date').value;
+  const title=document.getElementById('add-sched-title').value.trim();
+  const type=document.getElementById('add-sched-type').value;
+  if(!date||!title){toast('日付とタイトルを入力してください');return;}
+  const s=loadSchedules(); s.push({date,title,type}); s.sort((a,b)=>a.date<b.date?-1:1);
+  saveSchedules(s); closePopup(); renderSchedule(); toast('✅ 日程を追加しました');
+}
+
+let _editSchedOldDate='', _editSchedOldTitle='';
+function editScheduleItem(date,title){
+  _editSchedOldDate=date; _editSchedOldTitle=title;
+  const s=loadSchedules(); const item=s.find(x=>x.date===date&&x.title===title)||{};
+  showPopup(`<div style="margin-bottom:.8rem;font-size:.9rem;font-weight:700">✏️ 日程を編集</div>
+    <div class="fg" style="margin-bottom:.6rem"><label>日付</label>
+      <input type="date" id="edit-sched-date" value="${date}" style="width:100%;background:var(--panel3);border:1px solid var(--border);border-radius:8px;padding:.5rem;color:var(--fg);font-size:.9rem"></div>
+    <div class="fg" style="margin-bottom:.6rem"><label>タイトル</label>
+      <input type="text" id="edit-sched-title" value="${title}" style="width:100%;background:var(--panel3);border:1px solid var(--border);border-radius:8px;padding:.5rem;color:var(--fg);font-size:.9rem"></div>
+    <div class="fg" style="margin-bottom:.9rem"><label>種別</label>
+      <select id="edit-sched-type" style="width:100%;background:var(--panel3);border:1px solid var(--border);border-radius:8px;padding:.5rem;color:var(--fg);font-size:.9rem">
+        <option value="game" ${item.type==='game'?'selected':''}>練習試合</option>
+        <option value="tournament" ${item.type==='tournament'?'selected':''}>大会</option>
+        <option value="event" ${item.type==='event'?'selected':''}>行事・その他</option>
+      </select></div>
+    <button class="btn" onclick="confirmEditSchedule()" style="width:100%;margin-bottom:.4rem">保存</button>
+    <button class="btn btn-ghost" onclick="closePopup()" style="width:100%">キャンセル</button>`);
+}
+function confirmEditSchedule(){
+  const nd=document.getElementById('edit-sched-date').value;
+  const nt=document.getElementById('edit-sched-title').value.trim();
+  const ny=document.getElementById('edit-sched-type').value;
+  if(!nd||!nt){toast('入力してください');return;}
+  const arr=loadSchedules();
+  const i=arr.findIndex(x=>x.date===_editSchedOldDate&&x.title===_editSchedOldTitle);
+  if(i>=0) arr[i]={date:nd,title:nt,type:ny};
+  arr.sort((a,b)=>a.date<b.date?-1:1);
+  saveSchedules(arr); closePopup(); renderSchedule(); toast('✅ 更新しました');
+}
+
+function deleteScheduleItem(date,title){
+  if(!confirm('「'+title+'」を削除しますか？')) return;
+  saveSchedules(loadSchedules().filter(x=>!(x.date===date&&x.title===title)));
+  renderSchedule(); toast('🗑 削除しました');
+}
 
 // ═══════════════════ ANALYSIS ═══════════════════
 let _analysisMode = 'batter';
@@ -4456,4 +4783,3 @@ function _getPitcherInnings(name, g){
 </script>
 </body>
 </html>
-
