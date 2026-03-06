@@ -4068,7 +4068,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   document.body.style.visibility='visible';
 
   // 関学大附チームを初回のみ自動登録
-  const KANKOGAKU_KEY = 'bpm_kankogaku_v4';
+  const KANKOGAKU_KEY = 'bpm_kankogaku_v5';
   if(!localStorage.getItem(KANKOGAKU_KEY)){
     const kankogakuPlayers = [
       {name:'石原文太',  num:'1', pos:'投手',  isPitcher:true,throws:'右',bats:'右'},
@@ -4137,6 +4137,20 @@ document.addEventListener('DOMContentLoaded',()=>{
       kankogakuPlayers.forEach(p=>{ if(!existNames.has(p.name)) existing.players.push(p); });
     }
     saveTeams(teams);
+
+    // 対戦相手チームも自動登録（選手なし・チーム名のみ）
+    const oppTeams = ["熊谷商業", "常総学院", "日大豊山", "大宮東", "桐生清桜", "桐生第一", "関東第一", "加茂暁星", "川口青陵", "上武大学", "桐生工業", "春日部共栄", "横浜商大", "専大松戸", "下妻第一", "白鷗足利", "星野", "国学院栃木", "八王子実践", "高経附", "高崎商大付", "太田東", "目黒日大", "大森学園", "浦和学院", "拓大紅陵", "木総", "鹿学", "駿台", "川口", "立志社", "国士館", "埼玉栄", "農大三", "日大藤沢", "青藍泰斗", "常磐大", "伊奈学園", "明秀日立", "上尾", "秀明英光", "東海大相模", "常磐"];
+    const currentTeams = loadTeams();
+    const existingNames = new Set(currentTeams.map(t=>t.name));
+    let added = false;
+    oppTeams.forEach(name=>{
+      if(!existingNames.has(name)){
+        currentTeams.push({name:name, players:[]});
+        added = true;
+      }
+    });
+    if(added) saveTeams(currentTeams);
+
     localStorage.setItem(KANKOGAKU_KEY, '1');
   }
 
@@ -4226,45 +4240,67 @@ function renderSchedule(){
 function _extractOpponent(title){
   return title.replace(/[（(][^）)]*[）)]/g,'').replace(/[AB]チーム/g,'').replace(/[　\s]+/g,' ').trim();
 }
+// タイトルから対戦相手リストを返す（・区切りで複数）
+function _extractOpponents(title){
+  const clean = title.replace(/[（(][^）)]*[）)]/g,'').replace(/[　\s]+/g,' ').trim();
+  if(clean.includes('・')){
+    return clean.split('・').map(s=>s.trim()).filter(s=>s.length>=2);
+  }
+  return clean ? [clean] : [];
+}
+
+// スケジュールタップ用グローバル
+let _schedTapDate = '', _schedTapOpponents = [];
 
 function onScheduleTap(date, title){
   const games = loadGames();
-  // 同日同対戦相手の試合を最大3件まで表示
-  const linked = games.filter(g=>g.date===date);
-  const opponent = _extractOpponent(title);
+  const opponents = _extractOpponents(title); // 複数対戦相手
+  _schedTapDate = date;
+  _schedTapOpponents = opponents;
 
-  let html = `<div style="margin-bottom:.8rem">
-    <div style="font-size:.62rem;color:var(--muted);letter-spacing:2px">日程詳細</div>
-    <div style="font-size:1.05rem;font-weight:700;margin-top:.2rem">${title}</div>
-    <div style="font-size:.72rem;color:var(--muted)">${date}</div>
-  </div>`;
+  let html = '<div style="margin-bottom:.8rem">'
+    + '<div style="font-size:.62rem;color:var(--muted);letter-spacing:2px">日程詳細</div>'
+    + '<div style="font-size:1.05rem;font-weight:700;margin-top:.2rem">'+title+'</div>'
+    + '<div style="font-size:.72rem;color:var(--muted)">'+date+'</div>'
+    + '</div>';
 
-  if(linked.length){
-    html += `<div style="font-size:.65rem;color:var(--muted);letter-spacing:2px;margin-bottom:.4rem">📁 試合記録 (${linked.length}件)</div>`;
-    html += linked.slice(0,3).map(g=>{
-      const s = g.score;
-      const score = s?`${s.our||0} - ${s.opp||0}`:'記録中';
-      const res = s?(s.our>s.opp?'勝':s.our<s.opp?'敗':'分'):'';
-      const rc = res==='勝'?'#44cc77':res==='敗'?'#ff4d4d':'#aaa';
-      return `<div style="background:var(--panel2);border:1px solid var(--border);border-radius:8px;padding:.6rem .8rem;margin-bottom:.35rem;cursor:pointer" onclick="closePopup()">
-        <div style="display:flex;justify-content:space-between;align-items:center">
-          <span style="font-size:.83rem;font-weight:700">${g.opponent||'---'}</span>
-          <span style="font-size:.95rem;font-weight:900;color:${rc}">${score}</span>
-        </div>
-        <div style="font-size:.62rem;color:var(--muted);margin-top:.1rem">${g.venue||''} ${res?'【'+res+'】':''}</div>
-      </div>`;
-    }).join('');
-  }
+  // 対戦相手ごとに試合記録・記録ボタンを表示
+  opponents.forEach((opp, oi)=>{
+    const linked = games.filter(g=>g.date===date && g.opponent===opp);
+    html += '<div style="border:1px solid var(--border);border-radius:10px;padding:.7rem .8rem;margin-bottom:.6rem">';
+    html += '<div style="font-size:.78rem;font-weight:700;color:var(--accent);margin-bottom:.4rem">vs '+opp+'</div>';
 
-  // 試合を記録する（最大3試合）
-  const canAdd = linked.length < 3;
-  if(canAdd){
-    html += `<button class="btn" onclick="closePopup();startGameFromSchedule('${date}','${opponent.replace(/'/g,"\\'")}')" style="width:100%;margin-top:.5rem">⚾ 試合を記録する${linked.length>0?' ('+linked.length+'/3)':''}</button>`;
-  } else {
-    html += `<div style="text-align:center;font-size:.75rem;color:var(--muted);margin-top:.5rem;padding:.5rem;border:1px solid var(--border);border-radius:8px">この日程の試合記録は3件が上限です</div>`;
-  }
-  html += `<button class="btn btn-ghost" onclick="closePopup()" style="width:100%;margin-top:.4rem">閉じる</button>`;
+    if(linked.length){
+      linked.slice(0,3).forEach(g=>{
+        const s = g.score;
+        const score = s?(s.our||0)+' - '+(s.opp||0):'記録中';
+        const res = s?(s.our>s.opp?'勝':s.our<s.opp?'敗':'分'):'';
+        const rc = res==='勝'?'#44cc77':res==='敗'?'#ff4d4d':'#aaa';
+        html += '<div style="background:var(--panel3);border-radius:6px;padding:.45rem .6rem;margin-bottom:.3rem;font-size:.8rem;display:flex;justify-content:space-between">'
+          + '<span>'+(g.gameType||'練習試合')+'</span>'
+          + '<span style="font-weight:900;color:'+rc+'">'+score+(res?' 【'+res+'】':'')+'</span>'
+          + '</div>';
+      });
+    }
+
+    const canAdd = linked.length < 3;
+    if(canAdd){
+      html += '<button class="btn" style="width:100%;margin-top:.3rem;font-size:.82rem" onclick="execStartFromSched('+oi+')">'
+        + '⚾ 記録する'+(linked.length?' ('+linked.length+'/3)':'')+'</button>';
+    } else {
+      html += '<div style="text-align:center;font-size:.72rem;color:var(--muted);padding:.3rem">記録上限（3件）</div>';
+    }
+    html += '</div>';
+  });
+
+  html += '<button class="btn btn-ghost" onclick="closePopup()" style="width:100%;margin-top:.2rem">閉じる</button>';
   showPopup(html);
+}
+
+function execStartFromSched(oi){
+  const opp = _schedTapOpponents[oi];
+  closePopup();
+  startGameFromSchedule(_schedTapDate, opp);
 }
 
 function startGameFromSchedule(date, opponent){
