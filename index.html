@@ -1911,6 +1911,24 @@ function handleResult(type){
   const batter=G.lineup[team][idx];
   const bn=batter?batter.name||'打者':'打者';
   const inn=`${G.inning}回${G.half==='top'?'表':'裏'}`;
+
+  // 投球ゾーン未記録で直接結果入力された場合、pitchLogに決め球として記録
+  if(_atBatPitches.length === 0){
+    const _autoResultMap = {
+      'walk':'ball','hbp':'ball','catint':'ball',
+      'k':'swing','strikeout':'swing',
+      'groundout':'out','go':'out','flyout':'out','fo':'out',
+      'sac':'out','sacfly':'out','dp':'out','tp':'out',
+      'h':'hit','single':'hit','2b':'hit','double':'hit',
+      '3b':'hit','triple':'hit','hr':'hit','homerun':'hit',
+      'error':'out','e':'out','fc':'out',
+    };
+    const autoResult = _autoResultMap[type] || 'out';
+    const isStrikeResult = ['swing','hit','out'].includes(autoResult);
+    _recordPitch(null, _inlinePitchType, autoResult);
+    // pitchCountは_recordPitch内でカウントされるので戻す必要なし
+  }
+
   // pitchCountは_recordPitch側でカウント済みのため、ここでは増やさない
   let logText='',logCls='out',runs=0;
 
