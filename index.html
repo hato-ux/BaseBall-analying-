@@ -294,6 +294,18 @@ nav::-webkit-scrollbar{display:none;}
     <button class="btn btn-y" onclick="goTab('setup',document.getElementById('tb-setup'))">⚾ 新試合を始める</button>
     <button class="btn btn-b" onclick="goTab('career',document.getElementById('tb-career'))">🏆 通算成績を見る</button>
   </div>
+  <!-- クラウド同期 -->
+  <div class="card" style="margin-top:.8rem">
+    <div class="card-t">☁️ クラウド同期</div>
+    <div style="font-size:.72rem;color:var(--muted);margin-bottom:.7rem">
+      Supabaseにデータを保存します。複数端末で共有できます。
+    </div>
+    <div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-bottom:.5rem">
+      <button class="btn btn-b" onclick="migrateToSupabase()">⬆️ ローカルデータをクラウドに移行</button>
+      <button class="btn" onclick="initSupabase().then(()=>toast('✅ 最新データを取得しました'))">🔄 クラウドから最新データを取得</button>
+    </div>
+    <div id="sb-status" style="font-size:.65rem;color:var(--muted)"></div>
+  </div>
   <!-- データ管理 -->
   <div class="card" style="margin-top:.8rem">
     <div class="card-t">データ管理</div>
@@ -701,12 +713,83 @@ const CAREER_KEY  = 'bpm_career_v3';
 const TEAMS_KEY   = 'bpm_teams_v1';
 
 // ═══════════════════ STORAGE ═══════════════════
-function loadGames(){try{return JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');}catch(e){return[];}}
-function saveGames(g){localStorage.setItem(STORAGE_KEY,JSON.stringify(g));}
-function loadCareer(){try{return JSON.parse(localStorage.getItem(CAREER_KEY)||'{}');}catch(e){return {};}}
-function saveCareer(c){localStorage.setItem(CAREER_KEY,JSON.stringify(c));}
-function loadTeams(){try{return JSON.parse(localStorage.getItem(TEAMS_KEY)||'[]');}catch(e){return[];}}
-function saveTeams(t){localStorage.setItem(TEAMS_KEY,JSON.stringify(t));}
+// ═══════════════════ SUPABASE ═══════════════════
+const _SB_URL = 'https://uxwevkooivnepuzqzfdz.supabase.co';
+const _SB_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InV4d2V2a29vaXZuZXB1enF6ZmR6Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzIwNTE5MzMsImV4cCI6MjA4NzYyNzkzM30.FEOWSyZ4139D3BC_mQT8qyIocf2Yw8Xwa4NmbfIORNE';
+const _SB_HDR = {'apikey': _SB_KEY, 'Authorization': 'Bearer ' + _SB_KEY, 'Content-Type': 'application/json'};
+
+// インメモリキャッシュ（同期アクセス用）
+let _cacheGames    = null;
+let _cacheCareer   = null;
+let _cacheTeams    = null;
+let _cacheSchedule = null;
+let _sbReady       = false;
+
+async function _sbGet(table, id) {
+  const r = await fetch(`${_SB_URL}/rest/v1/${table}?id=eq.${id}&select=data`, {headers: _SB_HDR});
+  if(!r.ok) return null;
+  const rows = await r.json();
+  return rows.length ? rows[0].data : null;
+}
+
+async function _sbSet(table, id, data) {
+  const body = JSON.stringify({id, data, updated_at: new Date().toISOString()});
+  const r = await fetch(`${_SB_URL}/rest/v1/${table}`, {
+    method: 'POST',
+    headers: {..._SB_HDR, 'Prefer': 'resolution=merge-duplicates'},
+    body
+  });
+  return r.ok;
+}
+
+// ─── 初期ロード（起動時に一括取得） ───
+async function initSupabase() {
+  try {
+    _cacheGames  = await _sbGet('games',  'main') || JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+    _cacheCareer = await _sbGet('career', 'main') || JSON.parse(localStorage.getItem(CAREER_KEY)||'{}');
+    _cacheTeams  = await _sbGet('teams',  'main') || JSON.parse(localStorage.getItem(TEAMS_KEY)||'[]');
+    const sbSched = await _sbGet('schedule','main');
+    _cacheSchedule = sbSched
+      || JSON.parse(localStorage.getItem(SCHEDULE_KEY)||'null');
+    _sbReady = true;
+
+    // localStorageにも同期（オフライン時のフォールバック用）
+    localStorage.setItem(STORAGE_KEY,  JSON.stringify(_cacheGames));
+    localStorage.setItem(CAREER_KEY,   JSON.stringify(_cacheCareer));
+    localStorage.setItem(TEAMS_KEY,    JSON.stringify(_cacheTeams));
+    if(_cacheSchedule) localStorage.setItem(SCHEDULE_KEY, JSON.stringify(_cacheSchedule));
+
+    console.log('✅ Supabase接続成功');
+    toast('☁️ データ同期完了');
+  } catch(e) {
+    console.warn('⚠️ Supabase接続失敗、ローカルデータを使用', e);
+    _cacheGames    = JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+    _cacheCareer   = JSON.parse(localStorage.getItem(CAREER_KEY)||'{}');
+    _cacheTeams    = JSON.parse(localStorage.getItem(TEAMS_KEY)||'[]');
+    _sbReady = false;
+  }
+}
+
+// ─── 同期アクセス関数（キャッシュ経由） ───
+function loadGames()   { return _cacheGames   || JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]'); }
+function loadCareer()  { return _cacheCareer  || JSON.parse(localStorage.getItem(CAREER_KEY)||'{}'); }
+function loadTeams()   { return _cacheTeams   || JSON.parse(localStorage.getItem(TEAMS_KEY)||'[]'); }
+
+function saveGames(g) {
+  _cacheGames = g;
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(g));
+  if(_sbReady) _sbSet('games', 'main', g).catch(e=>console.warn('games保存失敗',e));
+}
+function saveCareer(c) {
+  _cacheCareer = c;
+  localStorage.setItem(CAREER_KEY, JSON.stringify(c));
+  if(_sbReady) _sbSet('career', 'main', c).catch(e=>console.warn('career保存失敗',e));
+}
+function saveTeams(t) {
+  _cacheTeams = t;
+  localStorage.setItem(TEAMS_KEY, JSON.stringify(t));
+  if(_sbReady) _sbSet('teams', 'main', t).catch(e=>console.warn('teams保存失敗',e));
+}
 
 // ═══════════════════ GAME STATE ═══════════════════
 function freshPlayer(name,num,pos,isPitcher,throws,bats){
@@ -755,6 +838,10 @@ function renderHome(){
   Object.values(career).forEach(p=>{hr+=p.hr||0;h+=p.h||0;ab+=p.ab||0;});
   document.getElementById('hs-hr').textContent=hr;
   document.getElementById('hs-avg').textContent=ab>0?(h/ab).toFixed(3):'---';
+  // クラウド接続状態を表示
+  const sbStat = document.getElementById('sb-status');
+  if(sbStat) sbStat.textContent = _sbReady ? '✅ Supabase接続中' : '⚠️ オフライン（ローカルデータを使用中）';
+
   const el=document.getElementById('recent-games');
   if(!games.length){el.innerHTML='<div style="color:var(--muted);text-align:center;padding:1.5rem;font-size:.85rem">まだ試合記録がありません</div>';return;}
   el.innerHTML=games.slice(-5).reverse().map((g,i)=>{
@@ -2025,7 +2112,7 @@ function handleResult(type){
     case 'e':
     case 'error': showErrorPopup();return;
     case 'sac':
-      if(batter){batter.ab++;batter.sac=(batter.sac||0)+1;}
+      if(batter){batter.sac=(batter.sac||0)+1;}
       G.outs++;G.balls=0;G.strikes=0;
       trackPitcher('out');
       logText=`${bn} 犠打`; logCls='out';
@@ -2235,11 +2322,12 @@ function execTP(optIdx){
   const bidx = getActiveBatterIdx(G.batting);
   const batter = G.lineup[G.batting][bidx];
   const bn = batter?batter.name:'打者';
+  // スナップショットはG.bases変更前に取得
+  const _tpBalls=G.balls,_tpStrikes=G.strikes,_tpOuts=G.outs,_tpBase=G.bases.map(b=>b?1:0).join(''),_tpRunners=G.bases.filter(b=>b!==null).length;
   if(batter){ batter.ab++; }
   const names = bases.map(b=>G.bases[b]).filter(Boolean);
   bases.forEach(b=>{ G.bases[b]=null; });
   const outCount = 1 + bases.length;
-  const _tpBalls=G.balls,_tpStrikes=G.strikes,_tpOuts=G.outs,_tpBase=G.bases.map(b=>b?1:0).join(''),_tpRunners=G.bases.filter(b=>b!==null).length;
   G.outs += outCount; G.balls = 0; G.strikes = 0;
   for(let i=0;i<outCount;i++) trackPitcher('out');
   const inn = G.inning+'回'+(G.half==='top'?'表':'裏');
@@ -2480,6 +2568,8 @@ function execError(type,bn){
   let logText='',runs=0;
   const pit=G.lineup[G.fielding].find(p=>p.isPitcher&&!p.retired);
   if(type==='reach'){
+    // スナップショットをG.bases変更前に取得
+    const _eb1=G.balls,_es1=G.strikes,_eo1=G.outs,_ebs1=G.bases.map(b=>b?1:0).join(''),_er1=G.bases.filter(b=>b!==null).length;
     if(bat)bat.ab++;
     // 走者を全員1塁ずつ進める（押し出し式）
     runs=advAllRunners(1);
@@ -2488,7 +2578,6 @@ function execError(type,bn){
     else if(!G.bases[1]) G.bases[1]=bn;
     else if(!G.bases[2]) G.bases[2]=bn;
     logText=`${bn} エラー出塁`;
-    const _eb1=G.balls,_es1=G.strikes,_eo1=G.outs,_ebs1=G.bases.map(b=>b?1:0).join(''),_er1=G.bases.filter(b=>b!==null).length;
     G.balls=0; G.strikes=0; _pushAtBatGlobal('E',0,_eb1,_es1,_eo1,_ebs1,_er1); G.atBatOrder[team]++;
     if(pit&&runs>0) pit.er=Math.max(0,(pit.er||0)-runs); // 自責なし
   }
@@ -2514,8 +2603,11 @@ function showFCPopup(){
   const t=G.batting,idx=getActiveBatterIdx(t);
   const bat=G.lineup[t][idx],bn=bat?bat.name||'打者':'打者';
   if(!G.bases.some(b=>b!==null)){
-    if(bat)bat.ab++;G.outs++;G.balls=0;G.strikes=0;
+    if(bat)bat.ab++;
+    const _fcnb=G.balls,_fcns=G.strikes,_fcno=G.outs,_fcnbs=G.bases.map(b=>b?1:0).join(''),_fcnr=0;
+    G.outs++;G.balls=0;G.strikes=0;
     const inn=`${G.inning}回${G.half==='top'?'表':'裏'}`;
+    _pushAtBatGlobal('ゴロ',0,_fcnb,_fcns,_fcno,_fcnbs,_fcnr);
     pushLog(inn,`${bn} ゴロアウト（走者なし）`,'out');
     G.atBatOrder[G.batting]++;checkInningEnd();renderGameUI();return;
   }
@@ -4396,6 +4488,15 @@ function sumArr(arr){return(arr||[]).reduce((a,v)=>a+v,0);}
 document.addEventListener('DOMContentLoaded',()=>{
   document.body.style.visibility='visible';
 
+  // Supabase初期化（非同期）→ 完了後にrenderHomeが呼ばれる
+  initSupabase().then(()=>{
+    _runLocalInit();
+  }).catch(()=>{
+    _runLocalInit();
+  });
+});
+
+function _runLocalInit(){
   // 関学大附チームを初回のみ自動登録
   const KANKOGAKU_KEY = 'bpm_kankogaku_v5';
   if(!localStorage.getItem(KANKOGAKU_KEY)){
@@ -4484,7 +4585,7 @@ document.addEventListener('DOMContentLoaded',()=>{
   }
 
   renderHome();
-});
+}
 
 
 
@@ -4493,14 +4594,18 @@ const SCHEDULE_KEY = 'bpm_schedule_v2';
 const DEFAULT_SCHEDULES = [{"date": "2026-03-07", "title": "熊谷商業", "type": "game"}, {"date": "2026-03-08", "title": "東海大相模・大森学園（城沼）", "type": "game"}, {"date": "2026-03-14", "title": "常総学院（V)", "type": "game"}, {"date": "2026-03-15", "title": "日大豊山（H)", "type": "game"}, {"date": "2026-03-20", "title": "大宮東（H)", "type": "game"}, {"date": "2026-03-21", "title": "桐生清桜（広沢）", "type": "game"}, {"date": "2026-03-22", "title": "常磐AM 富士見PM", "type": "game"}, {"date": "2026-03-25", "title": "桐生第一（H)", "type": "game"}, {"date": "2026-03-26", "title": "関東第一・加茂暁星（関）", "type": "game"}, {"date": "2026-03-28", "title": "川口青陵（H)", "type": "game"}, {"date": "2026-03-30", "title": "上武大学", "type": "game"}, {"date": "2026-03-31", "title": "桐生工業（H)", "type": "game"}, {"date": "2026-04-02", "title": "春日部共栄・横浜商大（春）", "type": "game"}, {"date": "2026-04-03", "title": "専大松戸（V)", "type": "game"}, {"date": "2026-04-04", "title": "下妻第一（H)", "type": "game"}, {"date": "2026-04-05", "title": "白鷗足利（V)", "type": "game"}, {"date": "2026-04-05", "title": "星野B（H)", "type": "game"}, {"date": "2026-04-07", "title": "国学院栃木（V)", "type": "game"}, {"date": "2026-04-26", "title": "八王子実践（H)", "type": "game"}, {"date": "2026-04-29", "title": "高経附（H)", "type": "game"}, {"date": "2026-05-02", "title": "高崎商大付（V)", "type": "game"}, {"date": "2026-05-03", "title": "太田東（H)", "type": "game"}, {"date": "2026-05-06", "title": "目黒日大・大森学園（H)", "type": "game"}, {"date": "2026-05-08", "title": "K-cup", "type": "tournament"}, {"date": "2026-05-09", "title": "浦和学院（V)", "type": "game"}, {"date": "2026-05-16", "title": "拓大紅陵（V)", "type": "game"}, {"date": "2026-05-17", "title": "木総・鹿学（木）", "type": "game"}, {"date": "2026-05-17", "title": "木総・駿台（B)(H)", "type": "game"}, {"date": "2026-05-23", "title": "川口・立志社（H)", "type": "game"}, {"date": "2026-05-24", "title": "国士館（V)", "type": "game"}, {"date": "2026-05-30", "title": "埼玉栄（V)", "type": "game"}, {"date": "2026-05-30", "title": "埼玉栄（H)", "type": "game"}, {"date": "2026-05-31", "title": "農大三（H)", "type": "game"}, {"date": "2026-05-31", "title": "農大三（V)", "type": "game"}, {"date": "2026-06-07", "title": "日大藤沢（V)", "type": "game"}, {"date": "2026-06-13", "title": "青藍泰斗A（V) B（H)", "type": "game"}, {"date": "2026-06-14", "title": "常磐大（V)", "type": "game"}, {"date": "2026-06-19", "title": "伊奈学園（V)", "type": "game"}, {"date": "2026-06-20", "title": "明秀日立（H)", "type": "game"}, {"date": "2026-06-27", "title": "上尾（H)", "type": "game"}, {"date": "2026-06-28", "title": "秀明英光（H)", "type": "game"}];
 
 function loadSchedules(){
+  if(_cacheSchedule) return _cacheSchedule;
   try{
     const saved = JSON.parse(localStorage.getItem(SCHEDULE_KEY)||'null');
     if(saved) return saved;
-    localStorage.setItem(SCHEDULE_KEY, JSON.stringify(DEFAULT_SCHEDULES));
     return JSON.parse(JSON.stringify(DEFAULT_SCHEDULES));
   }catch(e){return JSON.parse(JSON.stringify(DEFAULT_SCHEDULES));}
 }
-function saveSchedules(s){localStorage.setItem(SCHEDULE_KEY,JSON.stringify(s));}
+function saveSchedules(s){
+  _cacheSchedule = s;
+  localStorage.setItem(SCHEDULE_KEY, JSON.stringify(s));
+  if(_sbReady) _sbSet('schedule','main',s).catch(e=>console.warn('schedule保存失敗',e));
+}
 
 let _schedMonth = null;
 
@@ -5774,6 +5879,53 @@ function renderPitcherAnalysis(name, allLogs, el){
   html += _sectionTitle('ストライク率 / 球種割合 / 球種別ストライク率');
   html += _renderPitcherPieCharts(name, games3, logs);
 
+  // ─ デバッグ：生データ確認（直近20打席） ─
+  html += _sectionTitle('【デバッグ】直近打席データ（outs/result/baseState確認）');
+  // アウト別サマリー
+  [0,1,2].forEach(o=>{
+    const ol = logs.filter(a=>a.outs===o);
+    const ab = ol.filter(a=>_isAB(a.result)).length;
+    const h  = ol.filter(a=>_isHit(a.result)).length;
+    const avg = ab>0 ? (h/ab).toFixed(3) : '---';
+    // result一覧
+    const rMap = {};
+    ol.forEach(a=>{ rMap[a.result]=(rMap[a.result]||0)+1; });
+    const rStr = Object.entries(rMap).map(([r,n])=>`${r}:${n}`).join(', ');
+    html += `<div style="background:var(--panel2);border-radius:6px;padding:.35rem .5rem;margin-bottom:.3rem;font-size:.62rem">
+      <strong style="color:var(--text)">${o}アウト</strong>
+      <span style="color:var(--muted);margin-left:.5rem">${ol.length}打席 / AB:${ab} / H:${h} / 打率:${avg}</span>
+      <div style="color:var(--border2);font-size:.55rem;margin-top:.15rem">${rStr||'なし'}</div>
+    </div>`;
+  });
+  const debugLogs = logs.slice(-20).reverse();
+  html += `<div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:.62rem">
+    <thead><tr style="border-bottom:1px solid var(--border2)">
+      <th style="padding:.2rem .3rem;color:var(--muted);font-weight:400;text-align:left">打者</th>
+      <th style="padding:.2rem .3rem;color:var(--muted);font-weight:400">outs</th>
+      <th style="padding:.2rem .3rem;color:var(--muted);font-weight:400">balls</th>
+      <th style="padding:.2rem .3rem;color:var(--muted);font-weight:400">strikes</th>
+      <th style="padding:.2rem .3rem;color:var(--muted);font-weight:400">baseState</th>
+      <th style="padding:.2rem .3rem;color:var(--muted);font-weight:400">result</th>
+      <th style="padding:.2rem .3rem;color:var(--muted);font-weight:400">isAB</th>
+      <th style="padding:.2rem .3rem;color:var(--muted);font-weight:400">isHit</th>
+    </tr></thead><tbody>`;
+  debugLogs.forEach(a=>{
+    const ab = _isAB(a.result);
+    const h  = _isHit(a.result);
+    const rc = h ? '#44cc77' : ab ? 'var(--text)' : 'var(--muted)';
+    html += `<tr style="border-bottom:1px solid var(--border)">
+      <td style="padding:.2rem .3rem;color:var(--muted)">${a.name||'?'}</td>
+      <td style="padding:.2rem .3rem;text-align:center;color:${a.outs===0?'var(--green)':'var(--text)'}">${a.outs}</td>
+      <td style="padding:.2rem .3rem;text-align:center">${a.balls}</td>
+      <td style="padding:.2rem .3rem;text-align:center">${a.strikes}</td>
+      <td style="padding:.2rem .3rem;text-align:center;font-family:monospace">${a.baseState||'—'}</td>
+      <td style="padding:.2rem .3rem;text-align:center;color:${rc};font-weight:700">${a.result}</td>
+      <td style="padding:.2rem .3rem;text-align:center;color:${ab?'var(--green)':'var(--muted)'}">${ab?'✓':'—'}</td>
+      <td style="padding:.2rem .3rem;text-align:center;color:${h?'var(--green)':'var(--muted)'}">${h?'✓':'—'}</td>
+    </tr>`;
+  });
+  html += `</tbody></table></div>`;
+
   el.innerHTML = html;
 }
 
@@ -5790,6 +5942,29 @@ function _getPitcherInnings(name, g){
   const aLogs = (g.atBatLog||[]).filter(a=>a.pitcherName===name);
   aLogs.forEach(a=>result.add(a.inning));
   return result;
+}
+
+// ─── ローカルデータをSupabaseに移行 ───
+async function migrateToSupabase(){
+  if(!_sbReady){ toast('⚠️ Supabase未接続'); return; }
+  try{
+    toast('⏳ クラウドに移行中...');
+    const g = JSON.parse(localStorage.getItem(STORAGE_KEY)||'[]');
+    const c = JSON.parse(localStorage.getItem(CAREER_KEY)||'{}');
+    const t = JSON.parse(localStorage.getItem(TEAMS_KEY)||'[]');
+    const s = JSON.parse(localStorage.getItem(SCHEDULE_KEY)||'null');
+    await _sbSet('games',   'main', g);
+    await _sbSet('career',  'main', c);
+    await _sbSet('teams',   'main', t);
+    if(s) await _sbSet('schedule','main', s);
+    _cacheGames   = g;
+    _cacheCareer  = c;
+    _cacheTeams   = t;
+    if(s) _cacheSchedule = s;
+    toast('✅ クラウド移行完了！');
+  }catch(e){
+    toast('❌ 移行失敗: '+e.message);
+  }
 }
 </script>
 </body>
