@@ -4957,9 +4957,9 @@ function _tripleCrossTable(logs, isPitcher=false){
     {label:'3-2', fn: a=>a.balls===3&&a.strikes===2},
   ];
 
-  // データが存在する走者グループのみ表示
-  const activeRunners = runnerGroups.filter(rg=>logs.filter(rg.fn).length>0);
-  if(!activeRunners.length) return `<div style="color:var(--muted);font-size:.75rem;padding:.5rem">データなし</div>`;
+  // 走者グループは全8パターン常時表示
+  const activeRunners = runnerGroups;
+  if(!logs.length) return `<div style="color:var(--muted);font-size:.75rem;padding:.5rem">データなし</div>`;
 
   const accentCol = isPitcher ? 'var(--red)' : 'var(--green)';
 
@@ -4977,21 +4977,20 @@ function _tripleCrossTable(logs, isPitcher=false){
 
   activeRunners.forEach(rg=>{
     const runnerLogs = logs.filter(rg.fn);
-    if(!runnerLogs.length) return;
 
     outGroups.forEach((og, oi)=>{
       const cellLogs = runnerLogs.filter(og.fn);
-      if(!cellLogs.length) return; // データのないout行は省略
 
       html += `<tr>`;
-      // 走者ラベル：最初のout行にのみ表示（rowspan相当）
-      if(oi===0 || !runnerLogs.filter(outGroups[oi-1].fn).length){
+      // 走者ラベル：最初のout行にのみ表示
+      if(oi===0){
         html += `<td style="padding:.2rem .3rem;white-space:nowrap;vertical-align:middle">
           <span style="font-size:.62rem;color:${accentCol};font-weight:700">${rg.label}</span>
           <span style="font-size:.55rem;color:var(--muted);margin-left:.2rem">${og.label}</span>
+          <span style="font-size:.5rem;color:var(--border2);margin-left:.2rem">(${runnerLogs.length})</span>
         </td>`;
       } else {
-        html += `<td style="padding:.2rem .3rem;white-space:nowrap;vertical-align:middle;padding-left:1rem">
+        html += `<td style="padding:.2rem .3rem;white-space:nowrap;vertical-align:middle;padding-left:.8rem">
           <span style="font-size:.55rem;color:var(--muted)">${og.label}</span>
         </td>`;
       }
@@ -5022,7 +5021,7 @@ function _tripleCrossTable(logs, isPitcher=false){
 
 function _isHit(r){ return ['H','2B','3B','HR'].includes(r); }
 function _is2BPlus(r){ return ['2B','3B','HR'].includes(r); }
-function _isAB(r){ return !['BB','HBP','CI','犠'].includes(r); }
+function _isAB(r){ return !['BB','HBP','CI','犠','SF'].includes(r); }
 function _isOBP(r){ return ['H','2B','3B','HR','BB','HBP','CI'].includes(r); }
 function _isTB(r){ return r==='H'?1:r==='2B'?2:r==='3B'?3:r==='HR'?4:0; }
 
