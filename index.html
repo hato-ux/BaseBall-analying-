@@ -5829,7 +5829,16 @@ function _renderPitcherPieCharts(name, games, filteredLogs){
     if(gTotal > 0){
       gameStrikeList.push({
         date: g.date||'日付不明',
-        opp:  g.teams ? (g.teams.home===name||g.teams.away===name ? Object.values(g.teams).find(t=>t!==name)||'' : (g.teams.home+' vs '+g.teams.away)) : '',
+        opp: (()=>{
+          // pitchLogのpitcherTeamから投手チームを特定し相手チームを表示
+          const firstPitch = (g.pitchLog||[]).find(p=>p.pitcher===name);
+          if(firstPitch && g.teams){
+            const pitTeam = firstPitch.pitcherTeam; // 'home' or 'away'
+            const oppTeam = pitTeam==='home'?'away':'home';
+            return g.teams[oppTeam]||'';
+          }
+          return '';
+        })(),
         total: gTotal, strikes: gStrikes,
         pct: Math.round(gStrikes/gTotal*100)
       });
@@ -5865,9 +5874,10 @@ function _renderPitcherPieCharts(name, games, filteredLogs){
   const gameListHtml = gameStrikeList.map(g=>{
     const barW = g.pct;
     const barCol = g.pct>=65?'#44cc77':g.pct>=60?'#f0c93a':g.pct>=55?'#ff8c00':'#ff4d4d';
+    const oppLabel = g.opp ? ` vs ${g.opp}` : '';
     return `<div style="background:var(--panel2);border-radius:8px;padding:.4rem .6rem;margin-bottom:.3rem">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.25rem">
-        <span style="font-size:.62rem;color:var(--muted)">${g.date}</span>
+        <span style="font-size:.62rem;color:var(--muted)">${g.date}<span style="color:var(--accent)">${oppLabel}</span></span>
         <span style="font-family:'Bebas Neue',monospace;font-size:1rem;color:${barCol}">${g.pct}%</span>
         <span style="font-size:.58rem;color:var(--muted)">${g.strikes}/${g.total}球</span>
       </div>
