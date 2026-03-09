@@ -671,6 +671,15 @@ nav::-webkit-scrollbar{display:none;}
       <button class="tg" onclick="setAnalysisTeamFilter('kankogaku',this)">関学大附</button>
     </div>
   </div>
+  <!-- 対戦相手 左右フィルター -->
+  <div style="display:flex;align-items:center;gap:.5rem;margin-bottom:.6rem;flex-wrap:wrap" id="analysis-hand-filter-row">
+    <span style="font-size:.7rem;color:var(--muted);letter-spacing:1px" id="analysis-hand-label">対戦相手:</span>
+    <div class="tg-row" id="analysis-hand-filter" style="margin-bottom:0">
+      <button class="tg active" onclick="setAnalysisHandFilter('all',this)">全て</button>
+      <button class="tg" onclick="setAnalysisHandFilter('right',this)">右</button>
+      <button class="tg" onclick="setAnalysisHandFilter('left',this)">左</button>
+    </div>
+  </div>
   <!-- 選手選択 -->
   <div style="display:flex;gap:.5rem;align-items:center;margin-bottom:.8rem;flex-wrap:wrap">
     <span style="font-size:.7rem;color:var(--muted);letter-spacing:1px">選手:</span>
@@ -1361,17 +1370,18 @@ function renderSbMini(){
     const label=isTop?'▲先攻':'▽後攻';
     const row=document.getElementById('sb-row'+ri);
     row.innerHTML=`<div class="sb-c tn">${G.teams[t]}<span style="font-size:.52rem;color:var(--muted);margin-left:.3rem">${label}</span></div>`;
-    for(let i=0;i<9;i++){
+    const dispInnings = Math.max(9, G.inning); // 延長対応
+    for(let i=0;i<dispInnings;i++){
       const inn=i+1;
       const cur=inn===G.inning&&t===G.batting;
-      // 完了イニング判定
       let done=false;
       if(inn<G.inning) done=true;
       else if(inn===G.inning&&isTop&&G.half==='bot') done=true;
-      const v=G.scores[t][i];
-      // 完了なら必ず数字（0も表示）、現在攻撃中は「―」、未来は空白
+      const v=G.scores[t][i]||0;
       const disp=done?String(v):(cur?'―':'');
-      row.innerHTML+=`<div class="sb-c${cur?' cur':''}"><span class="inn-num">${disp}</span></div>`;
+      // 延長回はヘッダーラベルに印をつける
+      const extMark = inn>9 ? `<span style="font-size:.45rem;color:var(--purple)">延</span>` : '';
+      row.innerHTML+=`<div class="sb-c${cur?' cur':''}${inn>9?' ext':''}"><span class="inn-num">${disp}</span>${extMark}</div>`;
     }
     const tot=sumArr(G.scores[t]);
     const opp=isTop?botTeam:topTeam;
@@ -1586,28 +1596,51 @@ function renderActionBtns(){
 }
 
 // ═══════════════════ PITCHER CHANGE ═══════════════════
+let _pitcherChangeTeam='';
 function showPitcherChangePopup(team){
+  _pitcherChangeTeam=team;
   const currentPit = G.lineup[team].find(p=>p.isPitcher && !p.retired);
-  const inn = `${G.inning}回${G.half==='top'?'表':'裏'}`;
+  const inn = G.inning+'回'+(G.half==='top'?'表':'裏');
   const currentName = currentPit ? currentPit.name : '（なし）';
-  showPopup(`<h3>⚾ 投手交代 — ${G.teams[team]}</h3>
-    <p style="font-size:.76rem;color:var(--muted);margin-bottom:.8rem">${inn} 現在の投手: <strong style="color:var(--blue)">${currentName}</strong></p>
-    <div style="display:grid;grid-template-columns:60px 1fr;gap:.5rem;margin-bottom:.8rem">
-      <div class="fg"><label>背番号</label><input class="mi" id="pc-num" placeholder="11"></div>
-      <div class="fg"><label>新投手名</label><input class="mi" id="pc-name" placeholder="新投手名"></div>
-    </div>
 
-    <div class="fg" style="margin-bottom:.8rem">
-      <label>交代理由（任意）</label>
-      <input class="mi" id="pc-reason" placeholder="例：球数制限、疲労" style="width:100%">
-    </div>
-    <div class="pop-btns">
-      <button class="btn btn-y" onclick="execPitcherChange('${team}')">✅ 交代実行</button>
-      <button class="btn btn-ghost" onclick="showSubTeamPopup('${team}')">← 戻る</button>
-    </div>`);
+  // 登録済み投手をベンチから取得
+  const teams = loadTeams();
+  const teamObj = teams.find(t=>t.name===G.teams[team]);
+  const pitchers = teamObj ? teamObj.players.filter(p=>p.isPitcher && !G.lineup[team].some(lp=>lp&&!lp.retired&&lp.name===p.name)) : [];
+
+  _pitchersList=pitchers;
+  let benchHtml='';
+  if(pitchers.length){
+    benchHtml='<div style="margin-bottom:.7rem"><div style="font-size:.65rem;color:var(--muted);letter-spacing:2px;margin-bottom:.4rem">登録投手</div>'
+      +'<div style="display:flex;flex-wrap:wrap;gap:.3rem">'
+      +pitchers.map((p,pi)=>'<button class="btn btn-ghost btn-sm" style="font-size:.75rem" onclick="selectPitcherPlayer('+pi+')">'+(p.num?'#'+p.num+' ':'')+p.name+'</button>').join('')
+      +'</div></div>';
+  }
+
+  showPopup('<h3>⚾ 投手交代 — '+G.teams[team]+'</h3>'
+    +'<p style="font-size:.76rem;color:var(--muted);margin-bottom:.8rem">'+inn+' 現在の投手: <strong style="color:var(--blue)">'+currentName+'</strong></p>'
+    +benchHtml
+    +'<div style="display:grid;grid-template-columns:60px 1fr;gap:.5rem;margin-bottom:.8rem">'
+    +'<div class="fg"><label>背番号</label><input class="mi" id="pc-num" placeholder="11"></div>'
+    +'<div class="fg"><label>新投手名</label><input class="mi" id="pc-name" placeholder="新投手名"></div>'
+    +'</div>'
+    +'<div class="fg" style="margin-bottom:.8rem"><label>交代理由（任意）</label>'
+    +'<input class="mi" id="pc-reason" placeholder="例：球数制限、疲労" style="width:100%"></div>'
+    +'<div class="pop-btns">'
+    +'<button class="btn btn-y" onclick="execPitcherChange()">✅ 交代実行</button>'
+    +'<button class="btn btn-ghost" onclick="showSubTeamPopup(_pitcherChangeTeam)">← 戻る</button>'
+    +'</div>');
 }
 
-function execPitcherChange(team){
+let _pitchersList=[];
+function selectPitcherPlayer(idx){
+  const p=_pitchersList[idx]; if(!p) return;
+  const n=document.getElementById('pc-num'); const nm=document.getElementById('pc-name');
+  if(n) n.value=p.num||''; if(nm) nm.value=p.name;
+}
+
+function execPitcherChange(){
+  const team=_pitcherChangeTeam;
   const name = document.getElementById('pc-name').value.trim();
   if(!name){toast('⚠️ 新投手名を入力してください');return;}
   const num      = document.getElementById('pc-num').value.trim();
@@ -1881,28 +1914,32 @@ function handleResult(type){
   // pitchCountは_recordPitch側でカウント済みのため、ここでは増やさない
   let logText='',logCls='out',runs=0;
 
+  // 打席開始時点のカウント・状況をスナップショット保存（pushAtBat前にリセットされるため）
+  const _snapBalls   = G.balls;
+  const _snapStrikes = G.strikes;
+  const _snapOuts    = G.outs;
+  const _snapBase    = G.bases.map(b=>b?1:0).join('');
+  const _snapRunners = G.bases.filter(b=>b!==null).length;
+
   // 打席結果をスコアブック用に記録するヘルパー
   function pushAtBat(result, rbi=0){
     const activeOrder = G.lineup[team].filter((p,i)=>i<=idx&&!p.retired).length - 1;
     const pitcher = getCurrentPitcher();
-    const runnersOnBase = G.bases.filter(b=>b!==null).length; // 0,1,2,3
-    const baseState = G.bases.map(b=>b?1:0).join(''); // "000"〜"111"
-    const scoreSit = `${G.outs}アウト${runnersOnBase?runnersOnBase+'塁':''}`; 
     G.atBatLog.push({
       team, inning:G.inning, half:G.half,
       order: activeOrder,
       name: bn, result, rbi,
-      // 追加フィールド
-      outs: G.outs,
-      balls: G.balls,
-      strikes: G.strikes,
-      baseState,           // "000"〜"111"（一二三塁）
-      runnersOn: runnersOnBase,
+      // スナップショット（リセット前の値）
+      outs: _snapOuts,
+      balls: _snapBalls,
+      strikes: _snapStrikes,
+      baseState: _snapBase,
+      runnersOn: _snapRunners,
       pitcherName: pitcher?.name||'',
       pitcherThrows: pitcher?.throws||'右',
       batterThrows: batter?.throws||'右',
       batterBats: batter?.bats||'右',
-      pitcherPitchCount: G.pitchCount[G.fielding], // この打席終了時点の投手球数
+      pitcherPitchCount: G.pitchCount[G.fielding],
     });
   }
 
@@ -1926,13 +1963,25 @@ function handleResult(type){
   switch(type){
     // ── 安打 ──
     case 'h':
-    case 'single':  if(batter){batter.ab++;batter.h++;} trackPitcher('hit'); runs=advBatter(1); logText=`${bn} 単打`; logCls='hit'; pushAtBat('H'); endAB(); break;
+    case 'h':
+    case 'single':
+      trackPitcher('hit');
+      if(G.bases.some(b=>b!==null)){ showAdvancePopup_hit('single',bn,batter,team,inn,pushAtBat,endAB); return; }
+      if(batter){batter.ab++;batter.h++;} runs=advBatter(1); logText=bn+' 単打'; logCls='hit'; pushAtBat('H'); endAB(); break;
     case '2b':
-    case 'double':  if(batter){batter.ab++;batter.h++;batter.b2++;} trackPitcher('hit'); runs=advBatter(2); logText=`${bn} 二塁打`; logCls='hit'; pushAtBat('2B'); endAB(); break;
+    case 'double':
+      trackPitcher('hit');
+      if(G.bases.some(b=>b!==null)){ showAdvancePopup_hit('double',bn,batter,team,inn,pushAtBat,endAB); return; }
+      if(batter){batter.ab++;batter.h++;batter.b2++;} runs=advBatter(2); logText=bn+' 二塁打'; logCls='hit'; pushAtBat('2B'); endAB(); break;
     case '3b':
-    case 'triple':  if(batter){batter.ab++;batter.h++;batter.b3++;} trackPitcher('hit'); runs=advBatter(3); logText=`${bn} 三塁打`; logCls='hit'; pushAtBat('3B'); endAB(); break;
+    case 'triple':
+      trackPitcher('hit');
+      if(G.bases.some(b=>b!==null)){ showAdvancePopup_hit('triple',bn,batter,team,inn,pushAtBat,endAB); return; }
+      if(batter){batter.ab++;batter.h++;batter.b3++;} runs=advBatter(3); logText=bn+' 三塁打'; logCls='hit'; pushAtBat('3B'); endAB(); break;
     case 'hr':
-    case 'homerun': if(batter){batter.ab++;batter.h++;batter.hr++;} trackPitcher('hit'); runs=advBatter(4); logText=`${bn} 本塁打🔥`; logCls='hr'; pushAtBat('HR'); endAB(); toast(`💥 ホームラン！${bn}！`); break;
+    case 'homerun':
+      if(batter){batter.ab++;batter.h++;batter.hr++;} trackPitcher('hit');
+      runs=advBatter(4); logText=bn+' 本塁打🔥'; logCls='hr'; pushAtBat('HR'); endAB(); toast('💥 ホームラン！'+bn+'！'); break;
     // ── 四死球 ──
     case 'bb':
     case 'walk':    if(batter){batter.bb++;} trackPitcher('bb'); runs=advForced(1); logText=`${bn} 四球`; logCls='bb'; pushAtBat('BB'); endAB(); break;
@@ -1963,6 +2012,17 @@ function handleResult(type){
       trackPitcher('out');
       logText=`${bn} 犠打`; logCls='out';
       pushAtBat('犠'); endAB(); break;
+    case 'sacfly':
+      if(!G.bases[2]){toast('⚠️ 三塁走者がいません');return;}
+      { // 犠飛：打者は犠打でab増加なし、三塁走者生還
+        const runner3=G.bases[2];
+        G.outs++;G.balls=0;G.strikes=0;
+        trackPitcher('out');
+        G.bases[2]=null; addRun(team,runner3);
+        if(batter){ batter.rbi=(batter.rbi||0)+1; batter.sac=(batter.sac||0)+1; }
+        logText=`${bn} 犠飛（${runner3} 生還）`; logCls='hit';
+        pushAtBat('SF',1); endAB();
+      } break;
     case 'steal':   if(!G.bases.some(b=>b!==null)){toast('⚠️ 走者がいません');return;} showStealPopup();return;
     case 'passball':if(!G.bases.some(b=>b!==null)){toast('⚠️ 走者がいません');return;} showAdvancePopup('パスボール');return;
     case 'balk':
@@ -1982,10 +2042,13 @@ function advAllRunners(n){
   G.bases=nb;return r;
 }
 function addRun(team,runner,earned=true){
-  const i=G.inning-1;if(i<9)G.scores[team][i]++;
+  const i=G.inning-1;
+  // 延長対応：配列が足りなければ拡張
+  while(G.scores[team].length<=i) G.scores[team].push(0);
+  G.scores[team][i]++;
   // 失点した投手（守備側チーム）に自責点を加算
   if(earned){
-    const pit=G.lineup[G.fielding].find(p=>p.isPitcher);
+    const pit=G.lineup[G.fielding].find(p=>p.isPitcher&&!p.retired);
     if(pit) pit.er=(pit.er||0)+1;
   }
 }
@@ -1994,9 +2057,17 @@ function endAB(){G.atBatOrder[G.batting]++;G.balls=0;G.strikes=0;}
 // retired選手をスキップして現在の打者インデックスを返す
 function getActiveBatterIdx(team){
   const lineup = G.lineup[team];
-  // null スロット・退場済みを除く
-  const activeIdxs = lineup.map((p,i)=>i).filter(i=>lineup[i] && !lineup[i].retired);
-  if(!activeIdxs.length) return 0;
+  // null・退場済み・投手を除いたアクティブ打者のインデックス一覧
+  const activeIdxs = lineup.map((p,i)=>i).filter(i=>{
+    const p=lineup[i];
+    return p && !p.retired && !p.isPitcher;
+  });
+  // 投手のみのチームなど全員投手の場合はisPitcherも含める
+  if(!activeIdxs.length){
+    const all=lineup.map((p,i)=>i).filter(i=>lineup[i]&&!lineup[i].retired);
+    if(!all.length) return 0;
+    return all[G.atBatOrder[team] % all.length];
+  }
   const pos = G.atBatOrder[team] % activeIdxs.length;
   return activeIdxs[pos];
 }
@@ -2035,11 +2106,39 @@ function manualStrike(){
 // DP/TP用グローバル変数（Safari対策）
 let _dpTpCandidates = [];
 
+function _pushAtBatGlobal(result, rbi, snapBalls, snapStrikes, snapOuts, snapBase, snapRunners){
+  // handleResult外からatBatLogに記録するグローバル版pushAtBat
+  rbi = rbi || 0;
+  const team = G.batting;
+  const idx = getActiveBatterIdx(team);
+  const batter = G.lineup[team][idx];
+  const pitcher = getCurrentPitcher();
+  // スナップショットが渡されていない場合は現在値を使う
+  const _b  = snapBalls   !== undefined ? snapBalls   : G.balls;
+  const _s  = snapStrikes !== undefined ? snapStrikes : G.strikes;
+  const _o  = snapOuts    !== undefined ? snapOuts    : G.outs;
+  const _bs = snapBase    !== undefined ? snapBase    : G.bases.map(b=>b?1:0).join('');
+  const _ro = snapRunners !== undefined ? snapRunners : G.bases.filter(b=>b!==null).length;
+  G.atBatLog.push({
+    team, inning:G.inning, half:G.half,
+    order: G.lineup[team].filter((p,i)=>i<=idx&&!p.retired).length - 1,
+    name: batter?batter.name||'打者':'打者', result, rbi,
+    outs:_o, balls:_b, strikes:_s,
+    baseState:_bs, runnersOn:_ro,
+    pitcherName:pitcher?pitcher.name:'',
+    pitcherThrows:pitcher?pitcher.throws||'右':'右',
+    batterThrows:batter?batter.throws||'右':'右',
+    batterBats:batter?batter.bats||'右':'右',
+    pitcherPitchCount:G.pitchCount[G.fielding],
+  });
+}
+
 function showDPPopup(){
   const runners = G.bases.map((r,i)=>r?{name:r,base:i}:null).filter(Boolean);
   if(!runners.length){ toast('⚠️ 走者がいません'); return; }
   _dpTpCandidates = runners;
-  const batter = G.lineup[G.batting][G.batterIdx];
+  const idx = getActiveBatterIdx(G.batting);
+  const batter = G.lineup[G.batting][idx];
   const bn = batter?batter.name:'打者';
   let html = '<div style="font-weight:700;margin-bottom:.5rem">🔴🔴 ゲッツー</div>'
     + '<div style="font-size:.73rem;color:var(--muted);margin-bottom:.8rem">打者（'+bn+'）は自動アウト<br>アウトになった走者を選択</div>';
@@ -2055,17 +2154,20 @@ function showDPPopup(){
 function execDP(idx){
   saveHistory();
   const r = _dpTpCandidates[idx];
-  const batter = G.lineup[G.batting][G.batterIdx];
+  const bidx = getActiveBatterIdx(G.batting);
+  const batter = G.lineup[G.batting][bidx];
   const bn = batter?batter.name:'打者';
   if(batter){ batter.ab++; batter.dp=(batter.dp||0)+1; }
   G.bases[r.base] = null;
+  const _dpBalls=G.balls,_dpStrikes=G.strikes,_dpOuts=G.outs,_dpBase=G.bases.map(b=>b?1:0).join(''),_dpRunners=G.bases.filter(b=>b!==null).length;
   G.outs += 2; G.balls = 0; G.strikes = 0;
   trackPitcher('out'); trackPitcher('out');
   const inn = G.inning+'回'+(G.half==='top'?'表':'裏');
-  pushAtBat('DP');
+  _pushAtBatGlobal('DP',0,_dpBalls,_dpStrikes,_dpOuts,_dpBase,_dpRunners);
   pushLog(inn, bn+' ゲッツー（'+r.name+' アウト）', 'out');
   closePopup();
-  endAB(); checkInningEnd(); renderGameUI();
+  G.atBatOrder[G.batting]++;
+  checkInningEnd(); renderGameUI();
 }
 
 // TP用：選択候補リスト（配列の配列）
@@ -2076,7 +2178,8 @@ function showTPPopup(){
   if(runners.length < 1){ toast('⚠️ 走者がいません'); return; }
   _dpTpCandidates = runners;
   _tpOptions = [];
-  const batter = G.lineup[G.batting][G.batterIdx];
+  const idx = getActiveBatterIdx(G.batting);
+  const batter = G.lineup[G.batting][idx];
   const bn = batter?batter.name:'打者';
   let html = '<div style="font-weight:700;margin-bottom:.5rem">🔴🔴🔴 トリプルプレー</div>'
     + '<div style="font-size:.73rem;color:var(--muted);margin-bottom:.8rem">打者（'+bn+'）は自動アウト<br>アウトになった走者を選択</div>';
@@ -2086,7 +2189,6 @@ function showTPPopup(){
     html += '<button class="btn btn-r" style="width:100%;margin-bottom:.4rem"'
       + ' onclick="execTP(0)">'+runners[0].name+'（'+['一','二','三'][runners[0].base]+'塁）をアウト</button>';
   } else {
-    // 2人組み合わせ
     for(let i=0;i<runners.length;i++){
       for(let j=i+1;j<runners.length;j++){
         const r1=runners[i], r2=runners[j];
@@ -2097,7 +2199,6 @@ function showTPPopup(){
           + ' onclick="execTP('+optIdx+')">'+r1.name+'（'+l1+'塁）＋'+r2.name+'（'+l2+'塁）をアウト</button>';
       }
     }
-    // 全員アウト（3人以上）
     if(runners.length >= 3){
       const optIdx = _tpOptions.length;
       _tpOptions.push(runners.map(r=>r.base));
@@ -2113,20 +2214,148 @@ function showTPPopup(){
 function execTP(optIdx){
   saveHistory();
   const bases = _tpOptions[optIdx];
-  const batter = G.lineup[G.batting][G.batterIdx];
+  const bidx = getActiveBatterIdx(G.batting);
+  const batter = G.lineup[G.batting][bidx];
   const bn = batter?batter.name:'打者';
   if(batter){ batter.ab++; }
   const names = bases.map(b=>G.bases[b]).filter(Boolean);
   bases.forEach(b=>{ G.bases[b]=null; });
   const outCount = 1 + bases.length;
+  const _tpBalls=G.balls,_tpStrikes=G.strikes,_tpOuts=G.outs,_tpBase=G.bases.map(b=>b?1:0).join(''),_tpRunners=G.bases.filter(b=>b!==null).length;
   G.outs += outCount; G.balls = 0; G.strikes = 0;
   for(let i=0;i<outCount;i++) trackPitcher('out');
   const inn = G.inning+'回'+(G.half==='top'?'表':'裏');
-  pushAtBat('TP');
+  _pushAtBatGlobal('TP',0,_tpBalls,_tpStrikes,_tpOuts,_tpBase,_tpRunners);
   pushLog(inn, bn+' トリプルプレー（'+names.join('・')+' アウト）', 'out');
   closePopup();
+  G.atBatOrder[G.batting]++;
   checkInningEnd(); renderGameUI();
 }
+
+// ══════ ヒット進塁ポップアップ ══════
+var _hitAdv = null;
+
+function showAdvancePopup_hit(hitType, bn, batter, team, inn, pushAtBatFn, endABFn){
+  var defAdv = {single:1, double:2, triple:3}[hitType];
+  var batterDest = {single:1, double:2, triple:3}[hitType]; // 1-indexed塁
+  var runners = [];
+  for(var i=0;i<3;i++){ if(G.bases[i]!==null) runners.push({name:G.bases[i], base:i}); }
+
+  // 各走者のデフォルト進塁先
+  // 打者: 1=一塁,2=二塁,3=三塁,4=本塁(得点)
+  // 走者: 0=一塁(0-indexed),1=二塁,2=三塁,3=本塁(得点)
+  var advDests = {};
+  runners.forEach(function(r,ri){
+    advDests['r'+ri] = Math.min(r.base + defAdv, 3);
+  });
+  advDests['b'] = batterDest; // 打者デフォルト進塁先(1〜4)
+
+  _hitAdv = {hitType:hitType, bn:bn, batter:batter, team:team, inn:inn,
+             pushAtBatFn:pushAtBatFn, endABFn:endABFn, runners:runners, advDests:advDests,
+             snapBalls:G.balls, snapStrikes:G.strikes, snapOuts:G.outs,
+             snapBase:G.bases.map(function(b){return b?1:0;}).join(''),
+             snapRunners:G.bases.filter(function(b){return b!==null;}).length};
+  _renderHitAdv();
+}
+
+function _renderHitAdv(){
+  var s = _hitAdv;
+  var label = {single:'単打',double:'二塁打',triple:'三塁打'}[s.hitType];
+  var bNames = ['一','二','三'];
+
+  function destBtn(key, dest, label2, cur){
+    var sel = cur === dest;
+    var bg  = sel ? 'var(--accent)' : 'var(--panel2)';
+    var col = sel ? '#000' : 'var(--text)';
+    var bdr = sel ? 'var(--accent)' : 'var(--border)';
+    return '<button onclick="_advSet(\'' + key + '\',' + dest + ')" '
+      + 'style="padding:.25rem .45rem;border-radius:6px;border:1px solid '+bdr+';'
+      + 'background:'+bg+';color:'+col+';font-size:.73rem;cursor:pointer;white-space:nowrap">'
+      + label2+'</button>';
+  }
+
+  var html = '<div style="font-weight:700;font-size:.95rem;margin-bottom:.2rem">'+s.bn+' '+label+'</div>'
+    + '<div style="font-size:.7rem;color:var(--muted);margin-bottom:.8rem">進塁先を確認・変更してください</div>';
+
+  // 打者行
+  var bcur = s.advDests['b'];
+  html += '<div style="background:var(--panel3);border-radius:8px;padding:.55rem .75rem;margin-bottom:.4rem">'
+    + '<div style="font-size:.72rem;color:var(--muted);margin-bottom:.35rem">打者: <strong style="color:var(--accent)">'+s.bn+'</strong></div>'
+    + '<div style="display:flex;gap:.3rem;flex-wrap:wrap">'
+    + destBtn('b',1,'一塁',bcur) + destBtn('b',2,'二塁',bcur) + destBtn('b',3,'三塁',bcur) + destBtn('b',4,'本塁(得点)',bcur)
+    + '</div></div>';
+
+  // 走者行
+  s.runners.forEach(function(r,ri){
+    var cur = s.advDests['r'+ri];
+    var key = 'r'+ri;
+    html += '<div style="background:var(--panel3);border-radius:8px;padding:.55rem .75rem;margin-bottom:.4rem">'
+      + '<div style="font-size:.72rem;color:var(--muted);margin-bottom:.35rem">'+bNames[r.base]+'塁走者: <strong>'+r.name+'</strong></div>'
+      + '<div style="display:flex;gap:.3rem;flex-wrap:wrap">';
+    // 現在地でとどまる
+    html += destBtn(key, r.base, 'そのまま('+bNames[r.base]+'塁)', cur);
+    // 進塁できる塁
+    for(var d=r.base+1; d<=3; d++){
+      html += destBtn(key, d, d===3 ? '本塁(得点)' : bNames[d-1]+'塁', cur);
+    }
+    html += '</div></div>';
+  });
+
+  html += '<div style="display:flex;gap:.5rem;margin-top:.6rem">'
+    + '<button class="btn btn-y" onclick="confirmHitAdv()" style="flex:1">✅ 確定</button>'
+    + '<button class="btn btn-ghost" onclick="closePopup()" style="flex:1">キャンセル</button>'
+    + '</div>';
+
+  showPopup(html);
+}
+
+function _advSet(key, dest){
+  _hitAdv.advDests[key] = dest;
+  _renderHitAdv();
+}
+
+function confirmHitAdv(){
+  var s = _hitAdv;
+  var labels = {single:'単打',double:'二塁打',triple:'三塁打'};
+  var codes  = {single:'H',   double:'2B',   triple:'3B'};
+  var nb = [null,null,null];
+  var runs = 0;
+
+  // 打者成績を確定時に更新（キャンセル時の二重計上防止）
+  if(s.batter){
+    s.batter.ab++;
+    s.batter.h++;
+    if(s.hitType==='double') s.batter.b2=(s.batter.b2||0)+1;
+    if(s.hitType==='triple') s.batter.b3=(s.batter.b3||0)+1;
+  }
+
+  // 走者処理
+  s.runners.forEach(function(r,ri){
+    var d = s.advDests['r'+ri];
+    if(d >= 3){ runs++; addRun(s.team, r.name); }
+    else { nb[d] = r.name; }
+  });
+
+  // 打者処理 (bd: 1=一塁,2=二塁,3=三塁,4=本塁得点)
+  var bd = s.advDests['b'];
+  if(bd >= 4){ runs++; addRun(s.team, s.bn); }
+  else if(bd >= 1){ nb[bd-1] = s.bn; }
+
+  G.bases = nb;
+  var logText = s.bn + ' ' + labels[s.hitType];
+  if(runs > 0){
+    logText += ' (' + runs + '点)';
+    if(s.batter) s.batter.rbi += runs;
+    toast('🏃 ' + runs + '点入りました！');
+  }
+  s.pushAtBatFn(codes[s.hitType], runs);
+  pushLog(s.inn, logText, 'hit');
+  closePopup();
+  s.endABFn();
+  checkInningEnd();
+  renderGameUI();
+}
+
 
 function showStealPopup(){
   let html=`<h3>🏃 盗塁</h3><p style="font-size:.76rem;color:var(--muted);margin-bottom:.8rem">走者と結果を選択</p>`;
@@ -2166,18 +2395,56 @@ function execStealHome(ok){
   }
   closePopup();renderGameUI();
 }
+// パスボール/ボーク用進塁ポップアップ（走者ごとに個別選択）
+var _pbAdvName='', _pbAdvDests={};
 function showAdvancePopup(name){
-  showPopup(`<h3>🧤 ${name}</h3>
-    <p style="font-size:.76rem;color:var(--muted);margin-bottom:.8rem">進塁数を選択</p>
-    <button class="btn btn-b" style="width:100%;margin-bottom:.4rem" onclick="execPassball(1,'${name}')">走者全員 1塁進塁</button>
-    <button class="btn btn-b" style="width:100%;margin-bottom:.4rem" onclick="execPassball(2,'${name}')">走者全員 2塁進塁</button>
-    <button class="btn btn-ghost" style="width:100%" onclick="closePopup()">キャンセル</button>`);
+  _pbAdvName=name;
+  _pbAdvDests={};
+  // デフォルト：全員1塁進塁
+  G.bases.forEach((r,i)=>{ if(r!==null) _pbAdvDests['r'+i]=Math.min(i+1,3); });
+  _renderPbAdv();
 }
-function execPassball(n,name){
-  const inn=`${G.inning}回${G.half==='top'?'表':'裏'}`;saveHistory();
-  const r=advAllRunners(n);
-  let t=`${name} 走者${n}塁進塁`;if(r>0){t+=`（${r}点）`;toast(`🏃 ${r}点入りました！`);}
-  pushLog(inn,t,'sp');checkInningEnd();closePopup();renderGameUI();
+function _renderPbAdv(){
+  var bNames=['一','二','三'];
+  function btn(key,dest,label,cur){
+    var sel=cur===dest;
+    var bg=sel?'var(--accent)':'var(--panel2)';
+    var col=sel?'#000':'var(--text)';
+    var bdr=sel?'var(--accent)':'var(--border)';
+    return '<button onclick="_pbSet(\''+key+'\','+dest+')" style="padding:.25rem .45rem;border-radius:6px;border:1px solid '+bdr+';background:'+bg+';color:'+col+';font-size:.73rem;cursor:pointer;white-space:nowrap">'+label+'</button>';
+  }
+  var html='<div style="font-weight:700;font-size:.92rem;margin-bottom:.2rem">🧤 '+_pbAdvName+'</div>'
+    +'<div style="font-size:.7rem;color:var(--muted);margin-bottom:.8rem">各走者の進塁先を選択</div>';
+  G.bases.forEach(function(r,i){
+    if(r===null) return;
+    var key='r'+i, cur=_pbAdvDests[key];
+    html+='<div style="background:var(--panel3);border-radius:8px;padding:.55rem .75rem;margin-bottom:.4rem">'
+      +'<div style="font-size:.72rem;color:var(--muted);margin-bottom:.35rem">'+bNames[i]+'塁: <strong>'+r+'</strong></div>'
+      +'<div style="display:flex;gap:.3rem;flex-wrap:wrap">'
+      +btn(key,i,'そのまま',cur);
+    for(var d=i+1;d<=3;d++) html+=btn(key,d,d===3?'本塁(得点)':bNames[d-1]+'塁',cur);
+    html+='</div></div>';
+  });
+  html+='<div style="display:flex;gap:.5rem;margin-top:.5rem">'
+    +'<button class="btn btn-y" onclick="execPassball()" style="flex:1">✅ 確定</button>'
+    +'<button class="btn btn-ghost" onclick="closePopup()" style="flex:1">キャンセル</button>'
+    +'</div>';
+  showPopup(html);
+}
+function _pbSet(key,dest){ _pbAdvDests[key]=dest; _renderPbAdv(); }
+function execPassball(){
+  const inn=G.inning+'回'+(G.half==='top'?'表':'裏'); saveHistory();
+  const nb=[null,null,null]; let runs=0;
+  G.bases.forEach(function(r,i){
+    if(r===null) return;
+    var d=_pbAdvDests['r'+i];
+    if(d===undefined) d=Math.min(i+1,3);
+    if(d>=3){ runs++; addRun(G.batting,r); } else { nb[d]=r; }
+  });
+  G.bases=nb;
+  var t=_pbAdvName;
+  if(runs>0){t+=' '+runs+'点';toast('🏃 '+runs+'点入りました！');}
+  pushLog(inn,t,'sp'); checkInningEnd(); closePopup(); renderGameUI();
 }
 function showErrorPopup(){
   const t=G.batting,idx=getActiveBatterIdx(t);
@@ -2193,29 +2460,32 @@ function execError(type,bn){
   const inn=`${G.inning}回${G.half==='top'?'表':'裏'}`,team=G.batting;
   const idx=getActiveBatterIdx(team),bat=G.lineup[team][idx];saveHistory();
   let logText='',runs=0;
+  const pit=G.lineup[G.fielding].find(p=>p.isPitcher&&!p.retired);
   if(type==='reach'){
     if(bat)bat.ab++;
-    // エラー出塁は被安打にカウントしない
-    const nb=[...G.bases];
-    // 走者を1つずつ進める（強制進塁ではなくシンプルに全員1進塁）
+    // 走者を全員1塁ずつ進める（押し出し式）
     runs=advAllRunners(1);
-    if(!G.bases[0])G.bases[0]=bn;else G.bases[0]=bn;
-    logText=`${bn} エラー出塁`;endAB();
-    // エラー失点は自責なし：runs分だけ er を戻す
-    const pit=G.lineup[G.fielding].find(p=>p.isPitcher);
-    if(pit&&runs>0) pit.er=Math.max(0,(pit.er||0)-runs);
+    // 打者を一塁へ（一塁が空いているはず。万が一埋まっていたらさらに進める）
+    if(!G.bases[0]) G.bases[0]=bn;
+    else if(!G.bases[1]) G.bases[1]=bn;
+    else if(!G.bases[2]) G.bases[2]=bn;
+    logText=`${bn} エラー出塁`;
+    const _eb1=G.balls,_es1=G.strikes,_eo1=G.outs,_ebs1=G.bases.map(b=>b?1:0).join(''),_er1=G.bases.filter(b=>b!==null).length;
+    G.balls=0; G.strikes=0; _pushAtBatGlobal('E',0,_eb1,_es1,_eo1,_ebs1,_er1); G.atBatOrder[team]++;
+    if(pit&&runs>0) pit.er=Math.max(0,(pit.er||0)-runs); // 自責なし
   }
   else if(type==='advance'){
-    if(bat)bat.ab++;G.outs++;
+    if(bat)bat.ab++;
+    const _eb2=G.balls,_es2=G.strikes,_eo2=G.outs,_ebs2=G.bases.map(b=>b?1:0).join(''),_er2=G.bases.filter(b=>b!==null).length;
+    G.outs++;G.balls=0;G.strikes=0;
     trackPitcher('out');
-    runs=advAllRunners(1);logText=`${bn} アウト（エラーで走者進塁）`;endAB();
-    const pit=G.lineup[G.fielding].find(p=>p.isPitcher);
+    runs=advAllRunners(1);
+    logText=`${bn} アウト（エラーで走者進塁）`;
+    _pushAtBatGlobal('E',0,_eb2,_es2,_eo2,_ebs2,_er2); G.atBatOrder[team]++;
     if(pit&&runs>0) pit.er=Math.max(0,(pit.er||0)-runs);
   }
   else{
-    // エラーで走者生還：自責なし
     runs=advAllRunners(1);
-    const pit=G.lineup[G.fielding].find(p=>p.isPitcher);
     if(pit&&runs>0) pit.er=Math.max(0,(pit.er||0)-runs);
     logText=`エラーで走者生還（${runs}点・自責なし）`;
   }
@@ -2245,9 +2515,14 @@ function execFC(runnerBase,batterName){
   const idx=getActiveBatterIdx(t),bat=G.lineup[t][idx];saveHistory();
   const runner=G.bases[runnerBase];
   if(bat)bat.ab++;
-  G.bases[runnerBase]=null;G.outs++;
-  if(!G.bases[0])G.bases[0]=batterName;else G.bases[0]=batterName;
-  G.atBatOrder[t]++;G.balls=0;G.strikes=0;
+  const _fcb=G.balls,_fcs=G.strikes,_fco=G.outs,_fcbs=G.bases.map(b=>b?1:0).join(''),_fcr=G.bases.filter(b=>b!==null).length;
+  G.bases[runnerBase]=null; G.outs++;
+  // 打者を一塁へ（空いている最初の塁に入れる）
+  if(!G.bases[0]) G.bases[0]=batterName;
+  else if(!G.bases[1]) G.bases[1]=batterName;
+  else if(!G.bases[2]) G.bases[2]=batterName;
+  _pushAtBatGlobal('FC',0,_fcb,_fcs,_fco,_fcbs,_fcr);
+  G.atBatOrder[t]++; G.balls=0; G.strikes=0;
   pushLog(inn,`🔀 FC: ${runner}アウト → ${batterName} 出塁`,'sp');
   toast(`🔀 FC: ${runner}アウト、${batterName}出塁`);
   checkInningEnd();closePopup();renderGameUI();
@@ -2608,7 +2883,8 @@ function _showDetailScorebook(g, side){
       'ゴロ':{cls:'r-out',main:'ゴ',sub:'ゴロ'},
       'フライ':{cls:'r-out',main:'フ',sub:'フライ'},
       FC:{cls:'r-sp',main:'FC',sub:'FC'},E:{cls:'r-sp',main:'E',sub:'エラー'},
-      '犠':{cls:'r-out',main:'犠',sub:'犠打'}
+      '犠':{cls:'r-out',main:'犠',sub:'犠打'},
+      'SF':{cls:'r-hit',main:'SF',sub:'犠飛'}
     };
     return map[r]||{cls:'r-out',main:r,sub:''};
   }
@@ -2880,43 +3156,77 @@ function showSubTeamPopup(team){
     <button class="btn btn-ghost" style="width:100%;margin-top:.7rem" onclick="closePopup()">閉じる</button>`);
 }
 
+// 選手交代用グローバル
+let _subTeam='', _subOutIdx=0;
 function showSubReplacePopup(team, outIdx){
+  _subTeam=team; _subOutIdx=outIdx;
   const outPlayer = G.lineup[team][outIdx];
-  showPopup(`<h3>🔄 選手交代</h3>
-    <p style="font-size:.78rem;margin-bottom:.3rem">退く選手: <strong style="color:var(--red)">${outPlayer.name||'（空）'}</strong>（${outPlayer.pos}）</p>
-    <p style="font-size:.72rem;color:var(--muted);margin-bottom:.8rem">新しい選手の情報を入力</p>
-    <div style="display:grid;grid-template-columns:60px 1fr;gap:.5rem;margin-bottom:.5rem">
-      <div class="fg"><label>背番号</label><input class="mi" id="sub-num" placeholder="00" value=""></div>
-      <div class="fg"><label>名前</label><input class="mi" id="sub-name" placeholder="選手名"></div>
-    </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.8rem">
-      <div class="fg"><label>ポジション</label>
-        <select class="ms" id="sub-pos" style="width:100%;padding:.4rem">${POSITIONS.map(pp=>`<option value="${pp}"${pp===outPlayer.pos?' selected':''}>${pp}</option>`).join('')}</select>
-      </div>
-      <div class="fg" style="display:flex;flex-direction:column;gap:.4rem;padding-top:.3rem">
-        <label style="display:flex;align-items:center;gap:.3rem;font-size:.78rem;color:var(--text)">
-          <input type="checkbox" id="sub-is-pitcher" ${outPlayer.isPitcher?'checked':''}> 投手
-        </label>
-        <div style="display:flex;align-items:center;gap:.4rem;font-size:.75rem;color:var(--muted)">
-          投:<select class="ms" id="sub-throws" style="width:36px;font-size:.7rem;padding:.1rem">
-            <option value="右"${(outPlayer.throws||'右')==='右'?' selected':''}>右</option>
-            <option value="左"${outPlayer.throws==='左'?' selected':''}>左</option>
-          </select>
-          打:<select class="ms" id="sub-bats" style="width:42px;font-size:.7rem;padding:.1rem">
-            <option value="右"${(outPlayer.bats||'右')==='右'?' selected':''}>右</option>
-            <option value="左"${outPlayer.bats==='左'?' selected':''}>左</option>
-            <option value="両"${outPlayer.bats==='両'?' selected':''}>両</option>
-          </select>
-        </div>
-      </div>
-    </div>
-    <div class="pop-btns">
-      <button class="btn btn-y" onclick="execSubstitution('${team}',${outIdx})">✅ 交代実行</button>
-      <button class="btn btn-ghost" onclick="showSubTeamPopup('${team}')">← 戻る</button>
-    </div>`);
+  // チーム登録済み選手を取得（ベンチ選手）
+  const teams = loadTeams();
+  const teamObj = teams.find(t=>t.name===G.teams[team]);
+  const benchPlayers = teamObj ? teamObj.players.filter(p=>{
+    // すでにラインナップにいる選手は除外
+    return !G.lineup[team].some(lp=>lp&&!lp.retired&&lp.name===p.name);
+  }) : [];
+
+  const posOpts = POSITIONS.map(pp=>'<option value="'+pp+'"'+(pp===outPlayer.pos?' selected':'')+'>'+pp+'</option>').join('');
+
+  _benchPlayersList=benchPlayers;
+  let benchHtml = '';
+  if(benchPlayers.length){
+    benchHtml = '<div style="margin-bottom:.7rem"><div style="font-size:.65rem;color:var(--muted);letter-spacing:2px;margin-bottom:.4rem">BENCH — タップして選択</div>'
+      + '<div style="display:flex;flex-wrap:wrap;gap:.3rem">'
+      + benchPlayers.map((p,bi)=>'<button class="btn btn-ghost btn-sm" style="font-size:.75rem" onclick="selectSubPlayer('+bi+')">'+(p.num?'#'+p.num+' ':'')+p.name+'</button>').join('')
+      + '</div></div>';
+  }
+
+  showPopup('<h3>🔄 選手交代</h3>'
+    + '<p style="font-size:.78rem;margin-bottom:.5rem">退く選手: <strong style="color:var(--red)">'+( outPlayer.name||'（空）')+'</strong>（'+outPlayer.pos+'）</p>'
+    + benchHtml
+    + '<div style="display:grid;grid-template-columns:60px 1fr;gap:.5rem;margin-bottom:.5rem">'
+    + '<div class="fg"><label>背番号</label><input class="mi" id="sub-num" placeholder="00" value=""></div>'
+    + '<div class="fg"><label>名前</label><input class="mi" id="sub-name" placeholder="選手名"></div>'
+    + '</div>'
+    + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.5rem;margin-bottom:.8rem">'
+    + '<div class="fg"><label>ポジション</label>'
+    + '<select class="ms" id="sub-pos" style="width:100%;padding:.4rem">'+posOpts+'</select></div>'
+    + '<div class="fg" style="display:flex;flex-direction:column;gap:.4rem;padding-top:.3rem">'
+    + '<label style="display:flex;align-items:center;gap:.3rem;font-size:.78rem;color:var(--text)">'
+    + '<input type="checkbox" id="sub-is-pitcher" '+(outPlayer.isPitcher?'checked':'')+'>投手</label>'
+    + '<div style="display:flex;align-items:center;gap:.4rem;font-size:.75rem;color:var(--muted)">'
+    + '投:<select class="ms" id="sub-throws" style="width:36px;font-size:.7rem;padding:.1rem">'
+    + '<option value="右"'+(( outPlayer.throws||'右')==='右'?' selected':'')+'>右</option>'
+    + '<option value="左"'+(outPlayer.throws==='左'?' selected':'')+'>左</option></select>'
+    + '打:<select class="ms" id="sub-bats" style="width:42px;font-size:.7rem;padding:.1rem">'
+    + '<option value="右"'+(( outPlayer.bats||'右')==='右'?' selected':'')+'>右</option>'
+    + '<option value="左"'+(outPlayer.bats==='左'?' selected':'')+'>左</option>'
+    + '<option value="両"'+(outPlayer.bats==='両'?' selected':'')+'>両</option></select>'
+    + '</div></div></div>'
+    + '<div class="pop-btns">'
+    + '<button class="btn btn-y" onclick="execSubstitution()">✅ 交代実行</button>'
+    +'<button class="btn btn-ghost" onclick="showSubTeamPopup(_subTeam)">← 戻る</button>'
+    + '</div>');
 }
 
-function execSubstitution(team, outIdx){
+let _benchPlayersList=[];
+function selectSubPlayer(idx){
+  const p=_benchPlayersList[idx]; if(!p) return;
+  const nameEl=document.getElementById('sub-name');
+  const numEl=document.getElementById('sub-num');
+  const posEl=document.getElementById('sub-pos');
+  const pitEl=document.getElementById('sub-is-pitcher');
+  const throwsEl=document.getElementById('sub-throws');
+  const batsEl=document.getElementById('sub-bats');
+  if(nameEl) nameEl.value=p.name;
+  if(numEl) numEl.value=p.num||'';
+  if(posEl) posEl.value=p.pos||posEl.value;
+  if(pitEl) pitEl.checked=p.isPitcher||false;
+  if(throwsEl) throwsEl.value=p.throws||'右';
+  if(batsEl) batsEl.value=p.bats||'右';
+}
+
+function execSubstitution(){
+  const team=_subTeam, outIdx=_subOutIdx;
   const name = document.getElementById('sub-name').value.trim();
   if(!name){toast('⚠️ 選手名を入力してください');return;}
   const num       = document.getElementById('sub-num').value.trim();
@@ -3567,7 +3877,8 @@ function showGroundFlyPopup(zone){
     {id:'fo',  label:'フライ',mark:'フ', color:'var(--text)'},
     {id:'fc',  label:'FC',    mark:'FC', color:'var(--blue)'},
     {id:'e',   label:'エラー',mark:'E',  color:'var(--red)'},
-    {id:'sac', label:'犠打',  mark:'犠', color:'var(--muted)'},
+    {id:'sac',    label:'犠打',  mark:'犠', color:'var(--muted)'},
+    {id:'sacfly', label:'犠飛',  mark:'犠飛', color:'var(--blue)'},
   ].map(b=>`<button onclick="selectOutType('${b.id}')" id="out-btn-${b.id}" style="flex:1;padding:.5rem .25rem;border-radius:8px;border:1px solid var(--muted);background:var(--panel2);color:var(--text);font-size:.75rem;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:.15rem">
     <span style="font-size:.95rem;font-weight:700;color:${b.color}">${b.mark}</span>
     <span style="font-size:.6rem;color:var(--muted)">${b.label}</span>
@@ -3585,7 +3896,7 @@ function showGroundFlyPopup(zone){
 let _selectedOutType = null;
 function selectOutType(type){
   _selectedOutType = type;
-  ['go','fo','fc','e','sac'].forEach(id=>{
+  ['go','fo','fc','e','sac','sacfly'].forEach(id=>{
     const b = document.getElementById('out-btn-'+id);
     if(!b) return;
     b.style.background = id===type ? 'rgba(255,255,255,.1)' : 'var(--panel2)';
@@ -4383,6 +4694,22 @@ function deleteScheduleItem(date,title){
 // ═══════════════════ ANALYSIS ═══════════════════
 let _analysisMode = 'batter';
 let _analysisTeamFilter = 'all';
+let _analysisHandFilter = 'all'; // 'all' | 'right' | 'left'
+
+function setAnalysisHandFilter(val, btn){
+  _analysisHandFilter = val;
+  document.querySelectorAll('#analysis-hand-filter .tg').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  // ラベルを打者/投手モードに合わせて更新
+  _updateHandFilterLabel();
+  renderAnalysis();
+}
+
+function _updateHandFilterLabel(){
+  const label = document.getElementById('analysis-hand-label');
+  if(!label) return;
+  label.textContent = _analysisMode === 'batter' ? '対投手:' : '対打者:';
+}
 
 function setAnalysisTeamFilter(val, btn){
   _analysisTeamFilter = val;
@@ -4395,6 +4722,7 @@ function setAnalysisMode(mode, btn){
   _analysisMode = mode;
   document.querySelectorAll('#analysis-mode-tabs .tg').forEach(b=>b.classList.remove('active'));
   if(btn) btn.classList.add('active');
+  _updateHandFilterLabel();
   initAnalysisPage();
 }
 
@@ -4456,7 +4784,19 @@ function renderAnalysis(){
   if(!name){ el.innerHTML='<div style="color:var(--muted);text-align:center;padding:2rem;font-size:.8rem">選手を選択してください</div>'; return; }
 
   const games = loadGames();
-  const allLogs = games.flatMap(g => g.atBatLog||[]);
+  let allLogs = games.flatMap(g => g.atBatLog||[]);
+
+  // 左右フィルター適用
+  if(_analysisHandFilter !== 'all'){
+    const hand = _analysisHandFilter === 'right' ? '右' : '左';
+    if(_analysisMode === 'batter'){
+      // 打者分析：対投手の左右で絞り込み
+      allLogs = allLogs.filter(a=>(a.pitcherThrows||'右')===hand);
+    } else {
+      // 投手分析：対打者の左右で絞り込み
+      allLogs = allLogs.filter(a=>(a.batterBats||'右')===hand);
+    }
+  }
 
   if(_analysisMode === 'batter'){
     renderBatterAnalysis(name, allLogs, el);
@@ -4465,7 +4805,203 @@ function renderAnalysis(){
   }
 }
 
+
+// ─── クロス集計ヘルパー ───
+
+// ボール-ストライクカウントの主要グループ
+const COUNT_GROUPS = [
+  {label:'初球\n0-0',  fn: a=>a.balls===0&&a.strikes===0},
+  {label:'有利\n1-0',  fn: a=>a.balls===1&&a.strikes===0},
+  {label:'有利\n2-0',  fn: a=>a.balls===2&&a.strikes===0},
+  {label:'有利\n3-0',  fn: a=>a.balls===3&&a.strikes===0},
+  {label:'五分\n1-1',  fn: a=>a.balls===1&&a.strikes===1},
+  {label:'五分\n2-1',  fn: a=>a.balls===2&&a.strikes===1},
+  {label:'不利\n0-1',  fn: a=>a.balls===0&&a.strikes===1},
+  {label:'不利\n0-2',  fn: a=>a.balls===0&&a.strikes===2},
+  {label:'不利\n1-2',  fn: a=>a.balls===1&&a.strikes===2},
+  {label:'不利\n2-2',  fn: a=>a.balls===2&&a.strikes===2},
+  {label:'フル\n3-1',  fn: a=>a.balls===3&&a.strikes===1},
+  {label:'フル\n3-2',  fn: a=>a.balls===3&&a.strikes===2},
+];
+
+const RUNNER_GROUPS = [
+  {label:'無走者',  fn: a=>a.runnersOn===0},
+  {label:'一塁',    fn: a=>a.baseState==='100'},
+  {label:'二塁',    fn: a=>a.baseState==='010'},
+  {label:'三塁',    fn: a=>a.baseState==='001'},
+  {label:'一二塁',  fn: a=>a.baseState==='110'},
+  {label:'一三塁',  fn: a=>a.baseState==='101'},
+  {label:'二三塁',  fn: a=>a.baseState==='011'},
+  {label:'満塁',    fn: a=>a.baseState==='111'},
+  {label:'得点圏',  fn: a=>a.baseState&&(a.baseState[1]==='1'||a.baseState[2]==='1')},
+];
+
+const OUT_GROUPS = [
+  {label:'0アウト', fn: a=>a.outs===0},
+  {label:'1アウト', fn: a=>a.outs===1},
+  {label:'2アウト', fn: a=>a.outs===2},
+];
+
+function _avgColor(avg, hasData){
+  if(!hasData) return 'transparent';
+  if(avg >= 0.400) return 'rgba(255,60,60,.7)';
+  if(avg >= 0.300) return 'rgba(240,201,58,.65)';
+  if(avg >= 0.200) return 'rgba(68,204,119,.55)';
+  if(avg >= 0.100) return 'rgba(77,166,255,.45)';
+  return 'rgba(100,100,140,.3)';
+}
+
+function _crossCell(stats, isPitcher=false){
+  const {ab, h} = stats;
+  if(ab===0) return `<td style="text-align:center;padding:.25rem .15rem;font-size:.6rem;color:var(--border2)">—</td>`;
+  const avg = h/ab;
+  const disp = avg.toFixed(3).replace('0.','.');
+  const bg = isPitcher ? _avgColor(avg, true) : _avgColor(avg, true);
+  const textCol = ab>0 ? '#fff' : 'var(--muted)';
+  return `<td style="text-align:center;padding:.25rem .15rem;background:${bg};border-radius:3px">
+    <div style="font-size:.65rem;font-weight:700;color:${textCol};font-family:monospace">${disp}</div>
+    <div style="font-size:.5rem;color:${textCol}99">${h}/${ab}</div>
+  </td>`;
+}
+
+function _calcABH(logs){
+  const ab = logs.filter(a=>_isAB(a.result)).length;
+  const h  = logs.filter(a=>_isHit(a.result)).length;
+  return {ab, h};
+}
+
+// 行=rowGroups, 列=colGroups のクロス集計テーブル
+function _crossTable(logs, rowGroups, colGroups, rowLabel, colLabel, isPitcher=false){
+  let html = `<div style="overflow-x:auto;margin-bottom:.5rem">`;
+  html += `<table style="border-collapse:separate;border-spacing:2px;font-size:.65rem;min-width:100%">`;
+  // ヘッダー
+  html += `<thead><tr>`;
+  html += `<th style="text-align:left;padding:.25rem .3rem;color:var(--muted);font-weight:400;white-space:nowrap;font-size:.6rem">${rowLabel}＼${colLabel}</th>`;
+  colGroups.forEach(cg=>{
+    const lbl = cg.label.replace('\n','<br>');
+    html += `<th style="text-align:center;padding:.2rem .1rem;color:var(--muted);font-weight:400;font-size:.58rem;white-space:nowrap">${lbl}</th>`;
+  });
+  // 合計列
+  html += `<th style="text-align:center;padding:.2rem .3rem;color:var(--muted);font-weight:600;font-size:.6rem">合計</th>`;
+  html += `</tr></thead><tbody>`;
+  // 行
+  rowGroups.forEach(rg=>{
+    const rowLogs = logs.filter(rg.fn);
+    if(rowLogs.length===0) return;
+    html += `<tr>`;
+    html += `<td style="padding:.25rem .3rem;color:var(--text);font-size:.62rem;white-space:nowrap;font-weight:500">${rg.label}</td>`;
+    colGroups.forEach(cg=>{
+      const cell = _calcABH(rowLogs.filter(cg.fn));
+      html += _crossCell(cell, isPitcher);
+    });
+    // 行合計
+    const total = _calcABH(rowLogs);
+    html += _crossCell(total, isPitcher);
+    html += `</tr>`;
+  });
+  html += `</tbody></table></div>`;
+  return html;
+}
 // ─── 集計ヘルパー ───
+
+// ─── 3軸クロス集計（走者×アウト×カウント）───
+function _tripleCrossTable(logs, isPitcher=false){
+  // 走者グループ（行ブロック）
+  const runnerGroups = [
+    {label:'無走者',  fn: a=>a.runnersOn===0},
+    {label:'一塁',    fn: a=>a.baseState==='100'},
+    {label:'二塁',    fn: a=>a.baseState==='010'},
+    {label:'三塁',    fn: a=>a.baseState==='001'},
+    {label:'一二塁',  fn: a=>a.baseState==='110'},
+    {label:'一三塁',  fn: a=>a.baseState==='101'},
+    {label:'二三塁',  fn: a=>a.baseState==='011'},
+    {label:'満塁',    fn: a=>a.baseState==='111'},
+  ];
+  // アウトカウント（行サブグループ）
+  const outGroups = [
+    {label:'0out', fn: a=>a.outs===0},
+    {label:'1out', fn: a=>a.outs===1},
+    {label:'2out', fn: a=>a.outs===2},
+  ];
+  // カウント列
+  const countCols = [
+    {label:'0-0', fn: a=>a.balls===0&&a.strikes===0},
+    {label:'1-0', fn: a=>a.balls===1&&a.strikes===0},
+    {label:'2-0', fn: a=>a.balls===2&&a.strikes===0},
+    {label:'3-0', fn: a=>a.balls===3&&a.strikes===0},
+    {label:'0-1', fn: a=>a.balls===0&&a.strikes===1},
+    {label:'1-1', fn: a=>a.balls===1&&a.strikes===1},
+    {label:'2-1', fn: a=>a.balls===2&&a.strikes===1},
+    {label:'3-1', fn: a=>a.balls===3&&a.strikes===1},
+    {label:'0-2', fn: a=>a.balls===0&&a.strikes===2},
+    {label:'1-2', fn: a=>a.balls===1&&a.strikes===2},
+    {label:'2-2', fn: a=>a.balls===2&&a.strikes===2},
+    {label:'3-2', fn: a=>a.balls===3&&a.strikes===2},
+  ];
+
+  // データが存在する走者グループのみ表示
+  const activeRunners = runnerGroups.filter(rg=>logs.filter(rg.fn).length>0);
+  if(!activeRunners.length) return `<div style="color:var(--muted);font-size:.75rem;padding:.5rem">データなし</div>`;
+
+  const accentCol = isPitcher ? 'var(--red)' : 'var(--green)';
+
+  let html = `<div style="overflow-x:auto">`;
+  html += `<table style="border-collapse:separate;border-spacing:1px;font-size:.58rem;min-width:100%">`;
+
+  // ヘッダー行：カウント列
+  html += `<thead><tr>`;
+  html += `<th style="text-align:left;padding:.2rem .3rem;color:var(--muted);font-weight:400;font-size:.55rem;white-space:nowrap">走者／Out</th>`;
+  countCols.forEach(cc=>{
+    html += `<th style="text-align:center;padding:.15rem .1rem;color:var(--muted);font-weight:400;font-size:.55rem;white-space:nowrap">${cc.label}</th>`;
+  });
+  html += `<th style="text-align:center;padding:.15rem .25rem;color:var(--muted);font-weight:600;font-size:.55rem">計</th>`;
+  html += `</tr></thead><tbody>`;
+
+  activeRunners.forEach(rg=>{
+    const runnerLogs = logs.filter(rg.fn);
+    if(!runnerLogs.length) return;
+
+    outGroups.forEach((og, oi)=>{
+      const cellLogs = runnerLogs.filter(og.fn);
+      if(!cellLogs.length) return; // データのないout行は省略
+
+      html += `<tr>`;
+      // 走者ラベル：最初のout行にのみ表示（rowspan相当）
+      if(oi===0 || !runnerLogs.filter(outGroups[oi-1].fn).length){
+        html += `<td style="padding:.2rem .3rem;white-space:nowrap;vertical-align:middle">
+          <span style="font-size:.62rem;color:${accentCol};font-weight:700">${rg.label}</span>
+          <span style="font-size:.55rem;color:var(--muted);margin-left:.2rem">${og.label}</span>
+        </td>`;
+      } else {
+        html += `<td style="padding:.2rem .3rem;white-space:nowrap;vertical-align:middle;padding-left:1rem">
+          <span style="font-size:.55rem;color:var(--muted)">${og.label}</span>
+        </td>`;
+      }
+
+      // カウント別セル
+      countCols.forEach(cc=>{
+        const s = _calcABH(cellLogs.filter(cc.fn));
+        html += _crossCell(s, isPitcher);
+      });
+      // 行合計
+      html += _crossCell(_calcABH(cellLogs), isPitcher);
+      html += `</tr>`;
+    });
+
+    // 走者ブロックの区切り線
+    html += `<tr><td colspan="${countCols.length+2}" style="height:3px;background:var(--border);opacity:.4"></td></tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+
+  // 凡例
+  html += `<div style="display:flex;gap:.5rem;flex-wrap:wrap;margin-top:.4rem;font-size:.58rem;color:var(--muted)">
+    <span style="font-size:.58rem">表示形式: 打率（安打/打数）　カウントはB-S</span>
+  </div>`;
+
+  return html;
+}
+
 function _isHit(r){ return ['H','2B','3B','HR'].includes(r); }
 function _is2BPlus(r){ return ['2B','3B','HR'].includes(r); }
 function _isAB(r){ return !['BB','HBP','CI','犠'].includes(r); }
@@ -4510,6 +5046,421 @@ function _sectionTitle(t){
   return `<div style="font-size:.65rem;color:var(--muted);letter-spacing:2px;margin:1rem 0 .4rem;border-left:3px solid var(--accent);padding-left:.5rem">${t}</div>`;
 }
 
+
+// ─── コース別打率チャート ───
+function renderZoneAvgChart(name, games, filteredLogs){
+  // pitchLogから「インプレー（hit or out）になった最後の球」のzoneを取得
+  // 各打席を inning+half+batter+seq の順で再構築
+
+  const SZ = new Set([6,7,8,11,12,13,16,17,18]);
+
+  // コースごとに {ab, h} を集計（ゾーン0〜24）
+  const zoneStats = {};
+  for(let i=0;i<25;i++) zoneStats[i]={ab:0,h:0};
+
+  games.forEach(g=>{
+    const pitchLog = g.pitchLog||[];
+    const atBatLog = g.atBatLog||[];
+
+    // 打席ごとにグループ化（inning+half+batter で対応）
+    // pitchLogのresultが 'hit','single','double','triple','homerun','hr','out' の球のzoneを取る
+    const inPlayResults = new Set(['hit','single','double','triple','homerun','hr','out']);
+
+    // atBatLogを順に処理
+    // filteredLogsが渡されていれば、絞り込み済みの打席のみ集計
+    const useFiltered = filteredLogs && filteredLogs.length > 0;
+    let pitchIdx = 0;
+    atBatLog.forEach(ab=>{
+      if(ab.name !== name) return;
+      if(useFiltered && !filteredLogs.some(f=>f.inning===ab.inning&&f.half===ab.half&&f.name===ab.name&&f.result===ab.result)) return;
+      const result = ab.result;
+      const isHitResult = ['H','2B','3B','HR'].includes(result);
+      const isABResult  = !['BB','HBP','CI','犠','SF'].includes(result);
+      if(!isABResult) return; // 打数にならないものは除外
+
+      // このab以降のpitchLogから当該打者の投球を探す
+      // 同イニング・同打者でinplayになった球を探す
+      let foundZone = null;
+      for(let pi=pitchIdx; pi<pitchLog.length; pi++){
+        const p = pitchLog[pi];
+        if(p.batter !== name) continue;
+        if(p.inning !== ab.inning || p.half !== ab.half) continue;
+        if(inPlayResults.has(p.result)){
+          foundZone = p.zone;
+          pitchIdx = pi + 1;
+          break;
+        }
+      }
+
+      if(foundZone == null) return; // zone不明はスキップ
+
+      if(!zoneStats[foundZone]) zoneStats[foundZone]={ab:0,h:0};
+      zoneStats[foundZone].ab++;
+      if(isHitResult) zoneStats[foundZone].h++;
+    });
+  });
+
+  // SVGでストライクゾーン5×5グリッド描画
+  const cellSize = 44;
+  const grid = 5;
+  const w = cellSize*grid, h = cellSize*grid;
+
+  function avgColor(ab, h){
+    if(ab===0) return '#1a1a2e';
+    const avg = h/ab;
+    // 0.000=青系, 0.300=黄, 0.500以上=赤
+    if(avg >= 0.400) return 'rgba(255,60,60,.85)';
+    if(avg >= 0.300) return 'rgba(240,201,58,.80)';
+    if(avg >= 0.200) return 'rgba(68,204,119,.65)';
+    if(avg >= 0.100) return 'rgba(77,166,255,.55)';
+    return 'rgba(100,100,140,.35)';
+  }
+
+  let svgCells = '';
+  for(let row=0;row<grid;row++){
+    for(let col=0;col<grid;col++){
+      const idx = row*grid+col;
+      const isSZ = SZ.has(idx);
+      const s = zoneStats[idx]||{ab:0,h:0};
+      const avg = s.ab>0 ? (s.h/s.ab) : null;
+      const dispAvg = avg!==null ? avg.toFixed(3).replace('0.','.') : '—';
+      const bg = avgColor(s.ab, s.h);
+      const border = isSZ ? '#ffffff55' : '#ffffff18';
+      const textCol = s.ab===0 ? '#444' : '#fff';
+      svgCells += `<g>
+        <rect x="${col*cellSize+1}" y="${row*cellSize+1}" width="${cellSize-2}" height="${cellSize-2}"
+          rx="3" fill="${bg}" stroke="${border}" stroke-width="${isSZ?1.5:.5}"/>
+        <text x="${col*cellSize+cellSize/2}" y="${row*cellSize+cellSize/2-3}"
+          text-anchor="middle" dominant-baseline="middle"
+          font-size="11" font-weight="700" fill="${textCol}" font-family="monospace">${dispAvg}</text>
+        <text x="${col*cellSize+cellSize/2}" y="${row*cellSize+cellSize/2+9}"
+          text-anchor="middle" dominant-baseline="middle"
+          font-size="8" fill="${textCol}88" font-family="monospace">${s.ab>0?s.h+'/'+ s.ab:''}</text>
+      </g>`;
+    }
+  }
+
+  // 凡例
+  const legend = `
+    <div style="display:flex;gap:.6rem;flex-wrap:wrap;margin-top:.6rem;font-size:.65rem;color:var(--muted)">
+      <span><span style="display:inline-block;width:10px;height:10px;background:rgba(255,60,60,.85);border-radius:2px;margin-right:3px"></span>.400+</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:rgba(240,201,58,.80);border-radius:2px;margin-right:3px"></span>.300+</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:rgba(68,204,119,.65);border-radius:2px;margin-right:3px"></span>.200+</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:rgba(77,166,255,.55);border-radius:2px;margin-right:3px"></span>.100+</span>
+      <span><span style="display:inline-block;width:10px;height:10px;background:rgba(100,100,140,.35);border-radius:2px;margin-right:3px"></span>.000</span>
+      <span style="margin-left:.5rem;color:var(--muted)">実線=ストライクゾーン</span>
+    </div>`;
+
+  const totalAB = Object.values(zoneStats).reduce((s,v)=>s+v.ab,0);
+  if(totalAB===0){
+    return `<div style="color:var(--muted);font-size:.78rem;text-align:center;padding:1rem">コース別データなし（投球ゾーン記録がない試合は集計対象外）</div>`;
+  }
+
+  return `<div style="overflow-x:auto">
+    <svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}" style="max-width:100%;display:block;margin:0 auto">${svgCells}</svg>
+    ${legend}
+  </div>`;
+}
+
+// ─── 球種別打率チャート ───
+function renderPitchTypeAvgChart(name, games, filteredLogs){
+  const TYPES = [
+    {id:'fast',   label:'直球'},
+    {id:'slider', label:'スライダー'},
+    {id:'curve',  label:'カーブ'},
+    {id:'change', label:'チェンジアップ'},
+    {id:'fork',   label:'フォーク'},
+    {id:'sinker', label:'シュート'},
+    {id:'cut',    label:'カット'},
+    {id:'two',    label:'ツーシーム'},
+  ];
+
+  const inPlayResults = new Set(['hit','single','double','triple','homerun','hr','out']);
+  const typeStats = {};
+  TYPES.forEach(t=>{ typeStats[t.id]={ab:0,h:0,k:0,bb:0,foul:0,swing:0,called:0,total:0}; });
+
+  games.forEach(g=>{
+    const pitchLog = g.pitchLog||[];
+    const atBatLog = g.atBatLog||[];
+
+    // filteredLogsが渡されていれば、絞り込み済みの打席のみ集計
+    const useFiltered = filteredLogs && filteredLogs.length > 0;
+    let pitchIdx = 0;
+    atBatLog.forEach(ab=>{
+      if(ab.name !== name) return;
+      if(useFiltered && !filteredLogs.some(f=>f.inning===ab.inning&&f.half===ab.half&&f.name===ab.name&&f.result===ab.result)) return;
+      const result = ab.result;
+      const isHitResult = ['H','2B','3B','HR'].includes(result);
+      const isABResult  = !['BB','HBP','CI','犠','SF'].includes(result);
+      const isBB = ['BB','HBP','CI'].includes(result);
+      const isK  = result === 'K';
+
+      // この打席の投球を全部集める
+      const abPitches = [];
+      for(let pi=pitchIdx; pi<pitchLog.length; pi++){
+        const p = pitchLog[pi];
+        if(p.batter !== name) continue;
+        if(p.inning !== ab.inning || p.half !== ab.half) continue;
+        abPitches.push({...p, _pi: pi});
+        if(inPlayResults.has(p.result) || p.result === 'called'){
+          // 最後の球まで
+          if(inPlayResults.has(p.result)){
+            pitchIdx = pi + 1;
+            break;
+          }
+        }
+      }
+
+      // 最後の球（決め球）のtypeを取得
+      const lastPitch = abPitches.length ? abPitches[abPitches.length-1] : null;
+      if(!lastPitch) return;
+      const t = lastPitch.type;
+      if(!typeStats[t]) return;
+
+      // 球種別：決め球で集計
+      typeStats[t].total++;
+      if(isABResult) typeStats[t].ab++;
+      if(isHitResult) typeStats[t].h++;
+      if(isK) typeStats[t].k++;
+      if(isBB) typeStats[t].bb++;
+    });
+
+    // 各球のファール・空振り・見逃し数も集計
+    pitchLog.forEach(p=>{
+      if(p.batter !== name) return;
+      if(!typeStats[p.type]) return;
+      if(p.result === 'foul')   typeStats[p.type].foul++;
+      if(p.result === 'swing')  typeStats[p.type].swing++;
+      if(p.result === 'called') typeStats[p.type].called++;
+    });
+  });
+
+  const hasData = TYPES.some(t=>typeStats[t.id].total>0);
+  if(!hasData){
+    return `<div style="color:var(--muted);font-size:.78rem;text-align:center;padding:1rem">球種別データなし</div>`;
+  }
+
+  // カードグリッドで表示
+  const COLORS = {
+    fast:'#f0c93a', slider:'#4da6ff', curve:'#a78bfa', change:'#44cc77',
+    fork:'#ff4d4d', sinker:'#ff8c00', cut:'#e879f9', two:'#67e8f9'
+  };
+
+  let html = '<div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem;margin-top:.2rem">';
+  TYPES.forEach(t=>{
+    const s = typeStats[t.id];
+    if(s.total === 0) return;
+    const avg = s.ab>0 ? (s.h/s.ab).toFixed(3).replace('0.','.') : '---';
+    const whiff = (s.swing+s.foul)>0 ? Math.round(s.swing/(s.swing+s.foul+0.001)*100) : 0;
+    const col = COLORS[t.id]||'#aaa';
+    html += `<div style="background:var(--panel2);border-radius:8px;padding:.55rem .7rem;border-left:3px solid ${col}">
+      <div style="font-size:.65rem;color:${col};letter-spacing:.5px;font-weight:700;margin-bottom:.3rem">${t.label}</div>
+      <div style="display:flex;align-items:baseline;gap:.4rem;flex-wrap:wrap">
+        <span style="font-size:.68rem;color:var(--muted)">打率 <strong style="font-size:.92rem;color:var(--text)">${avg}</strong></span>
+        <span style="font-size:.62rem;color:var(--muted)">${s.h}安/${s.ab}打</span>
+      </div>
+      <div style="display:flex;gap:.4rem;flex-wrap:wrap;margin-top:.2rem;font-size:.6rem;color:var(--muted)">
+        <span>総球数 <strong style="color:var(--text)">${s.total}</strong></span>
+        <span>空振 <strong style="color:var(--text)">${s.swing}</strong></span>
+        <span>ファール <strong style="color:var(--text)">${s.foul}</strong></span>
+        <span>見逃 <strong style="color:var(--text)">${s.called}</strong></span>
+      </div>
+    </div>`;
+  });
+  html += '</div>';
+  return html;
+}
+
+// ─── 球種割合テーブル（投手分析用）───
+function _buildPitchMixMap(name, games, filteredLogs){
+  // pitchLogから投手の全投球を取得し、atBatLog順に紐付けて
+  // 各打席の球種カウントマップを作る（filteredLogsで絞り込んだ打席のみ集計）
+  const TYPES = ['fast','slider','curve','change','fork','sinker','cut','two'];
+  const result = [];
+
+  games.forEach(g=>{
+    const pitchLog = g.pitchLog||[];
+    // filteredLogsが渡されていれば、そのgameのlogsだけに絞る
+    let atBatLog;
+    if(filteredLogs){
+      // 同試合の絞り込み済みログを使う（inning+half+nameで照合）
+      const gFiltered = filteredLogs.filter(a=>a.pitcherName===name&&a.inning!=null);
+      atBatLog = (g.atBatLog||[]).filter(a=>{
+        if(a.pitcherName!==name) return false;
+        return gFiltered.some(f=>f.inning===a.inning&&f.half===a.half&&f.name===a.name&&f.result===a.result);
+      });
+    } else {
+      atBatLog = (g.atBatLog||[]).filter(a=>a.pitcherName===name);
+    }
+    if(!atBatLog.length) return;
+
+    // pitchLogをその投手の投球だけに絞る
+    const myPitches = pitchLog.filter(p=>p.pitcher===name);
+
+    // atBatLog順に打席ごとの球種を集計
+    // 同inning+half内で打者名が変わるたびに打席が変わる
+    let pIdx = 0;
+    atBatLog.forEach(ab=>{
+      const typeMap = {};
+      TYPES.forEach(t=>{ typeMap[t]=0; });
+
+      // この打席に対応する投球を取り出す
+      // 同じinning+half+pitcherで連続する投球を対応付け
+      for(let pi=pIdx; pi<myPitches.length; pi++){
+        const p = myPitches[pi];
+        if(p.inning !== ab.inning || p.half !== ab.half) continue;
+        if(p.batter !== ab.name) continue;
+        if(p.type && typeMap[p.type] !== undefined) typeMap[p.type]++;
+        // インプレーまたは四球・三振で打席終了
+        const endResults = new Set(['hit','single','double','triple','homerun','hr','out','called']);
+        if(endResults.has(p.result)){
+          pIdx = pi + 1;
+          break;
+        }
+      }
+
+      result.push({
+        outs: ab.outs, balls: ab.balls, strikes: ab.strikes,
+        baseState: ab.baseState, runnersOn: ab.runnersOn,
+        types: typeMap,
+        totalPitches: Object.values(typeMap).reduce((s,v)=>s+v,0)
+      });
+    });
+  });
+
+  return result;
+}
+
+function _pitchMixBar(typeCounts, totalPitches){
+  if(totalPitches === 0) return `<span style="color:var(--muted);font-size:.6rem">—</span>`;
+  const TYPES = [
+    {id:'fast',   label:'直',  color:'#f0c93a'},
+    {id:'slider', label:'スラ', color:'#4da6ff'},
+    {id:'curve',  label:'カ',  color:'#a78bfa'},
+    {id:'change', label:'チェ', color:'#44cc77'},
+    {id:'fork',   label:'フォ', color:'#ff4d4d'},
+    {id:'sinker', label:'シュ', color:'#ff8c00'},
+    {id:'cut',    label:'カット',color:'#e879f9'},
+    {id:'two',    label:'2S',  color:'#67e8f9'},
+  ];
+  // 合計してゼロでない球種のみ表示
+  const active = TYPES.filter(t=>(typeCounts[t.id]||0)>0);
+  if(!active.length) return `<span style="color:var(--muted);font-size:.6rem">球種記録なし</span>`;
+
+  let bars = '';
+  let legend = '';
+  active.forEach(t=>{
+    const cnt = typeCounts[t.id]||0;
+    const pct = Math.round(cnt/totalPitches*100);
+    bars += `<div style="flex:${cnt};background:${t.color};height:8px;min-width:1px" title="${t.label} ${pct}% (${cnt}球)"></div>`;
+    legend += `<span style="display:flex;align-items:center;gap:2px;font-size:.55rem;color:var(--muted)">
+      <span style="display:inline-block;width:6px;height:6px;background:${t.color};border-radius:1px;flex-shrink:0"></span>
+      <span>${t.label}</span><strong style="color:var(--text)">${pct}%</strong>
+    </span>`;
+  });
+
+  return `<div style="display:flex;border-radius:3px;overflow:hidden;margin-bottom:3px">${bars}</div>
+    <div style="display:flex;flex-wrap:wrap;gap:3px 6px">${legend}</div>`;
+}
+
+// 3軸クロス + 球種割合テーブル
+function _tripleCrossPitchMix(name, games, filteredLogs){
+  const mixData = _buildPitchMixMap(name, games, filteredLogs);
+  if(!mixData.length) return `<div style="color:var(--muted);font-size:.75rem;padding:.5rem">データなし</div>`;
+
+  const TYPES = ['fast','slider','curve','change','fork','sinker','cut','two'];
+
+  const runnerGroups = [
+    {label:'無走者',  fn: d=>d.runnersOn===0},
+    {label:'一塁',    fn: d=>d.baseState==='100'},
+    {label:'二塁',    fn: d=>d.baseState==='010'},
+    {label:'三塁',    fn: d=>d.baseState==='001'},
+    {label:'一二塁',  fn: d=>d.baseState==='110'},
+    {label:'一三塁',  fn: d=>d.baseState==='101'},
+    {label:'二三塁',  fn: d=>d.baseState==='011'},
+    {label:'満塁',    fn: d=>d.baseState==='111'},
+  ];
+  const outGroups = [
+    {label:'0out', fn: d=>d.outs===0},
+    {label:'1out', fn: d=>d.outs===1},
+    {label:'2out', fn: d=>d.outs===2},
+  ];
+  const countGroups = [
+    {label:'0-0', fn: d=>d.balls===0&&d.strikes===0},
+    {label:'1-0', fn: d=>d.balls===1&&d.strikes===0},
+    {label:'2-0', fn: d=>d.balls===2&&d.strikes===0},
+    {label:'3-0', fn: d=>d.balls===3&&d.strikes===0},
+    {label:'0-1', fn: d=>d.balls===0&&d.strikes===1},
+    {label:'1-1', fn: d=>d.balls===1&&d.strikes===1},
+    {label:'2-1', fn: d=>d.balls===2&&d.strikes===1},
+    {label:'3-1', fn: d=>d.balls===3&&d.strikes===1},
+    {label:'0-2', fn: d=>d.balls===0&&d.strikes===2},
+    {label:'1-2', fn: d=>d.balls===1&&d.strikes===2},
+    {label:'2-2', fn: d=>d.balls===2&&d.strikes===2},
+    {label:'3-2', fn: d=>d.balls===3&&d.strikes===2},
+  ];
+
+  function _sumTypes(arr){
+    const total = {};
+    TYPES.forEach(t=>{ total[t]=0; });
+    let pitches = 0;
+    arr.forEach(d=>{ TYPES.forEach(t=>{ total[t]+=(d.types[t]||0); }); pitches+=d.totalPitches; });
+    return {types:total, total:pitches};
+  }
+
+  const accentCol = '#a78bfa';
+  let html = `<div style="overflow-x:auto">`;
+  html += `<table style="border-collapse:separate;border-spacing:2px;font-size:.58rem;min-width:100%">`;
+
+  // ヘッダー（カウント列）
+  html += `<thead><tr>`;
+  html += `<th style="text-align:left;padding:.2rem .3rem;color:var(--muted);font-weight:400;font-size:.55rem;white-space:nowrap">走者／Out</th>`;
+  countGroups.forEach(cg=>{
+    html += `<th style="text-align:center;padding:.15rem .1rem;color:var(--muted);font-weight:400;font-size:.55rem;white-space:nowrap">${cg.label}</th>`;
+  });
+  html += `<th style="text-align:center;padding:.15rem .25rem;color:var(--muted);font-weight:600;font-size:.55rem">計</th>`;
+  html += `</tr></thead><tbody>`;
+
+  const activeRunners = runnerGroups.filter(rg=>mixData.filter(rg.fn).length>0);
+
+  activeRunners.forEach(rg=>{
+    const rgData = mixData.filter(rg.fn);
+    outGroups.forEach((og, oi)=>{
+      const ogData = rgData.filter(og.fn);
+      if(!ogData.length) return;
+
+      html += `<tr>`;
+      html += `<td style="padding:.2rem .3rem;white-space:nowrap;vertical-align:top">
+        <span style="font-size:.62rem;color:${accentCol};font-weight:700">${oi===0?rg.label:''}</span>
+        <span style="font-size:.55rem;color:var(--muted);${oi===0?'margin-left:.2rem':''}">${og.label}</span>
+      </td>`;
+
+      countGroups.forEach(cg=>{
+        const cell = ogData.filter(cg.fn);
+        const s = _sumTypes(cell);
+        if(s.total===0){
+          html += `<td style="text-align:center;padding:.2rem .1rem;font-size:.55rem;color:var(--border2)">—</td>`;
+        } else {
+          html += `<td style="padding:.2rem .1rem;min-width:52px;vertical-align:top">
+            <div style="font-size:.52rem;color:var(--muted);text-align:center;margin-bottom:2px">${s.total}球</div>
+            ${_pitchMixBar(s.types, s.total)}
+          </td>`;
+        }
+      });
+      // 行合計
+      const rowTotal = _sumTypes(ogData);
+      html += `<td style="padding:.2rem .25rem;min-width:60px;vertical-align:top">
+        <div style="font-size:.52rem;color:var(--muted);text-align:center;margin-bottom:2px">${rowTotal.total}球</div>
+        ${_pitchMixBar(rowTotal.types, rowTotal.total)}
+      </td>`;
+      html += `</tr>`;
+    });
+    html += `<tr><td colspan="14" style="height:3px;background:var(--border);opacity:.4"></td></tr>`;
+  });
+
+  html += `</tbody></table></div>`;
+  return html;
+}
 // ─── 打者分析 ───
 function renderBatterAnalysis(name, allLogs, el){
   const logs = allLogs.filter(a=>a.name===name);
@@ -4574,6 +5525,19 @@ function renderBatterAnalysis(name, allLogs, el){
   html += _statBox('4〜6回', _calcStats(midLogs));
   html += _statBox('7回〜',  _calcStats(lateLogs));
   html += '</div>';
+
+  // ─ 走者状況 × アウトカウント × B-Sカウント ─
+  html += _sectionTitle('走者 × アウト × カウント 打率');
+  html += _tripleCrossTable(logs, false);
+
+  // ─ コース別打率 ─
+  html += _sectionTitle('コース別打率（インプレー時のゾーン）');
+  const games = loadGames();
+  html += renderZoneAvgChart(name, games, logs);
+
+  // ─ 球種別打率 ─
+  html += _sectionTitle('球種別成績（決め球ベース）');
+  html += renderPitchTypeAvgChart(name, games, logs);
 
   el.innerHTML = html;
 }
@@ -4643,6 +5607,10 @@ function renderPitcherAnalysis(name, allLogs, el){
     html += _pitcherBox(g.label, _pitcherStats(logs.filter(g.fn)));
   });
   html += '</div>';
+
+  // ─ 走者状況 × アウトカウント × B-Sカウント 被打率 ─
+  html += _sectionTitle('走者 × アウト × カウント 被打率');
+  html += _tripleCrossTable(logs, true);
 
   // ─ 対左右別 ─
   html += _sectionTitle('対打者 左右別');
@@ -4801,10 +5769,172 @@ function renderPitcherAnalysis(name, allLogs, el){
     html += `</div>`;
   }
 
+  // ─ 走者×アウト×カウント 球種割合 ─
+  html += _sectionTitle('走者 × アウト × カウント 球種割合');
+  const games3 = loadGames();
+  html += _tripleCrossPitchMix(name, games3, logs);
+
+  // ─ ストライク率・球種割合 円グラフ ─
+  html += _sectionTitle('ストライク率 / 球種割合 / 球種別ストライク率');
+  html += _renderPitcherPieCharts(name, games3, logs);
+
   el.innerHTML = html;
 }
 
 
+
+// ─── 投手 円グラフ群（ストライク率・球種割合） ───
+function _renderPitcherPieCharts(name, games, filteredLogs){
+  const PITCH_TYPE_LIST = [
+    {id:'fast',   label:'直球',       color:'#f0c93a'},
+    {id:'slider', label:'スライダー', color:'#4da6ff'},
+    {id:'curve',  label:'カーブ',     color:'#a78bfa'},
+    {id:'change', label:'チェンジアップ',color:'#44cc77'},
+    {id:'fork',   label:'フォーク',   color:'#ff4d4d'},
+    {id:'sinker', label:'シュート',   color:'#ff8c00'},
+    {id:'cut',    label:'カット',     color:'#e879f9'},
+    {id:'two',    label:'ツーシーム', color:'#67e8f9'},
+  ];
+  const STRIKE_RESULTS = new Set(['called','swing','foul','hit','single','double','triple','homerun','hr','out']);
+
+  let validABKeys = null;
+  if(filteredLogs && filteredLogs.length > 0){
+    validABKeys = new Set(filteredLogs.map(f=>`${f.inning}__${f.half}__${f.name}`));
+  }
+
+  // 通算集計（球種割合・球種別ストライク率用）
+  const typeStats = {};
+  PITCH_TYPE_LIST.forEach(t=>{ typeStats[t.id]={total:0,strikes:0}; });
+  let grandTotal=0, grandStrikes=0;
+
+  // 試合別ストライク率リスト用
+  const gameStrikeList = [];
+
+  games.forEach(g=>{
+    let gTotal=0, gStrikes=0;
+    (g.pitchLog||[]).forEach(p=>{
+      if(p.pitcher !== name) return;
+      if(validABKeys){
+        const key = `${p.inning}__${p.half}__${p.batter}`;
+        if(!validABKeys.has(key)) return;
+      }
+      const t = p.type;
+      if(typeStats[t]!==undefined){ typeStats[t].total++; }
+      grandTotal++; gTotal++;
+      if(STRIKE_RESULTS.has(p.result)){
+        if(typeStats[t]!==undefined) typeStats[t].strikes++;
+        grandStrikes++; gStrikes++;
+      }
+    });
+    if(gTotal > 0){
+      gameStrikeList.push({
+        date: g.date||'日付不明',
+        opp:  g.teams ? (g.teams.home===name||g.teams.away===name ? Object.values(g.teams).find(t=>t!==name)||'' : (g.teams.home+' vs '+g.teams.away)) : '',
+        total: gTotal, strikes: gStrikes,
+        pct: Math.round(gStrikes/gTotal*100)
+      });
+    }
+  });
+
+  if(grandTotal === 0){
+    return `<div style="color:var(--muted);font-size:.75rem;padding:.5rem">投球データなし</div>`;
+  }
+
+  // ドーナツ円グラフ描画
+  function _donut(segments, cx, cy, r, innerR){
+    const total = segments.reduce((s,x)=>s+x.value,0);
+    if(total===0) return '';
+    let angle = -Math.PI/2;
+    let paths = '';
+    segments.forEach(seg=>{
+      if(seg.value===0) return;
+      const sweep = (seg.value/total)*2*Math.PI;
+      const x1=cx+r*Math.cos(angle), y1=cy+r*Math.sin(angle);
+      angle += sweep;
+      const x2=cx+r*Math.cos(angle), y2=cy+r*Math.sin(angle);
+      const xi1=cx+innerR*Math.cos(angle), yi1=cy+innerR*Math.sin(angle);
+      const xi2=cx+innerR*Math.cos(angle-sweep), yi2=cy+innerR*Math.sin(angle-sweep);
+      const large = sweep>Math.PI?1:0;
+      paths += `<path d="M${x1.toFixed(2)},${y1.toFixed(2)} A${r},${r} 0 ${large},1 ${x2.toFixed(2)},${y2.toFixed(2)} L${xi1.toFixed(2)},${yi1.toFixed(2)} A${innerR},${innerR} 0 ${large},0 ${xi2.toFixed(2)},${yi2.toFixed(2)} Z" fill="${seg.color}" stroke="var(--panel)" stroke-width="1.5"/>`;
+    });
+    return paths;
+  }
+
+  // ① 試合別ストライク率リスト
+  const avgPct = Math.round(grandStrikes/grandTotal*100);
+  const gameListHtml = gameStrikeList.map(g=>{
+    const barW = g.pct;
+    const barCol = g.pct>=65?'#44cc77':g.pct>=60?'#f0c93a':g.pct>=55?'#ff8c00':'#ff4d4d';
+    return `<div style="background:var(--panel2);border-radius:8px;padding:.4rem .6rem;margin-bottom:.3rem">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.25rem">
+        <span style="font-size:.62rem;color:var(--muted)">${g.date}</span>
+        <span style="font-family:'Bebas Neue',monospace;font-size:1rem;color:${barCol}">${g.pct}%</span>
+        <span style="font-size:.58rem;color:var(--muted)">${g.strikes}/${g.total}球</span>
+      </div>
+      <div style="height:5px;background:var(--border);border-radius:3px;overflow:hidden">
+        <div style="height:100%;width:${barW}%;background:${barCol};border-radius:3px;transition:width .3s"></div>
+      </div>
+    </div>`;
+  }).join('');
+
+  // 通算ストライク率バー
+  const avgCol = avgPct>=65?'#44cc77':avgPct>=60?'#f0c93a':avgPct>=55?'#ff8c00':'#ff4d4d';
+  const gameListSection = `
+    <div style="background:var(--panel);border-radius:10px;padding:.6rem;margin-bottom:.8rem;border:1px solid var(--border)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:.5rem">
+        <span style="font-size:.62rem;color:var(--muted);letter-spacing:1px">試合別ストライク率</span>
+        <span style="font-size:.62rem;color:var(--muted)">通算 <strong style="font-size:.85rem;color:${avgCol}">${avgPct}%</strong> (${grandStrikes}/${grandTotal}球)</span>
+      </div>
+      <div style="max-height:280px;overflow-y:auto">${gameListHtml}</div>
+    </div>`;
+
+  // ② 球種割合 円グラフ（通算）
+  const svgW=130,svgH=130,cx=65,cy=65,r=52,ir=32;
+  const typeSegs = PITCH_TYPE_LIST.filter(t=>typeStats[t.id].total>0).map(t=>({
+    value:typeStats[t.id].total, color:t.color, label:t.label, id:t.id
+  }));
+  const typeSvg = `<svg width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">
+    ${_donut(typeSegs,cx,cy,r,ir)}
+    <text x="${cx}" y="${cy+4}" text-anchor="middle" font-size="9" fill="var(--muted)" font-family="monospace">${grandTotal}球</text>
+  </svg>`;
+  const typeLegend = typeSegs.map(t=>{
+    const pct=Math.round(t.value/grandTotal*100);
+    return `<span style="display:flex;align-items:center;gap:3px;font-size:.58rem;color:var(--muted)">
+      <span style="width:8px;height:8px;background:${t.color};border-radius:2px;flex-shrink:0;display:inline-block"></span>
+      <span>${t.label}</span><strong style="color:var(--text)">${pct}%</strong><span style="color:var(--border2)">(${t.value})</span>
+    </span>`;
+  }).join('');
+
+  // ③ 球種別ストライク率 小円グラフ（3球以上）
+  const smW=80,smH=80,smCx=40,smCy=40,smR=32,smIr=20;
+  const typeStrikeSvgs = PITCH_TYPE_LIST.filter(t=>typeStats[t.id].total>=3).map(t=>{
+    const s=typeStats[t.id];
+    const sPct=Math.round(s.strikes/s.total*100);
+    const segs=[{value:s.strikes,color:t.color},{value:s.total-s.strikes,color:'#2a3050'}];
+    return `<div style="display:flex;flex-direction:column;align-items:center;gap:2px">
+      <svg width="${smW}" height="${smH}" viewBox="0 0 ${smW} ${smH}">
+        ${_donut(segs,smCx,smCy,smR,smIr)}
+        <text x="${smCx}" y="${smCy-3}" text-anchor="middle" font-size="11" font-weight="900" fill="${t.color}" font-family="'Bebas Neue',monospace">${sPct}%</text>
+        <text x="${smCx}" y="${smCy+9}" text-anchor="middle" font-size="6.5" fill="var(--muted)" font-family="monospace">${s.strikes}/${s.total}</text>
+      </svg>
+      <span style="font-size:.58rem;color:${t.color};font-weight:700;text-align:center">${t.label}</span>
+    </div>`;
+  }).join('');
+
+  return `
+  ${gameListSection}
+  <div style="display:grid;grid-template-columns:1fr 1fr;gap:.8rem;margin-bottom:.8rem">
+    <div style="background:var(--panel2);border-radius:10px;padding:.6rem;display:flex;flex-direction:column;align-items:center">
+      <div style="font-size:.62rem;color:var(--muted);letter-spacing:1px;margin-bottom:.3rem">投球球種割合（通算）</div>
+      ${typeSvg}
+      <div style="display:flex;flex-wrap:wrap;gap:3px 8px;justify-content:center;margin-top:.3rem">${typeLegend}</div>
+    </div>
+    <div style="background:var(--panel2);border-radius:10px;padding:.6rem">
+      <div style="font-size:.62rem;color:var(--muted);letter-spacing:1px;margin-bottom:.5rem">球種別ストライク率（3球以上）</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:.4rem">${typeStrikeSvgs}</div>
+    </div>
+  </div>`;
+}
 // 投手が投げたイニングセットを返す
 function _getPitcherInnings(name, g){
   const result = new Set();
